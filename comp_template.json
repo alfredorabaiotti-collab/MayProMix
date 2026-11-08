@@ -1,0 +1,48 @@
+{
+	"cid": "{36F3F4D1-CBB4-4BF7-A7E3-EBCCED53718B}",
+	"classname": "Compressor",
+	"parameters": 
+	{
+		"studiocomp": 
+		{
+			"ratio": @RATIO@,
+			"threshold": @THR@,
+			"knee": 6.0,
+			"autogain": 0.0,
+			"gain": @GAIN@,
+			"ingain": 0.0,
+			"autospeed": 0.0,
+			"attack": @ATT@,
+			"release": @REL@,
+			"dualband": 0.0,
+			"internalsidechain": 0.0,
+			"sidechainlisten": 0.0,
+			"sidechainfreqlow": 20.0,
+			"sidechainfreqhigh": 16000.0,
+			"swapfreqs": 0.0,
+			"linked": 1.0,
+			"lookahead": 1.0,
+			"resetmin": 0.0,
+			"mix": 1.0
+		},
+		"outputmeter": 
+		{
+
+		}
+	},
+	"component": 
+	{
+		"levels": 
+		{
+			"Levels": 
+			{
+				"mode": -1,
+				"rmsLength": 0,
+				"vuHold": 0,
+				"holdLength": 0,
+				"loudnessInLUFS": 0,
+				"loudnessEBU18": 0
+			}
+		}
+	}
+}

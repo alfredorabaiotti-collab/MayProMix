@@ -1,0 +1,77 @@
+name: Build May Pro Mix
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configura (Windows)
+        if: runner.os == 'Windows'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Configura (macOS, Intel + Apple Silicon)
+        if: runner.os == 'macOS'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+
+      - name: Compila
+        run: cmake --build build --config Release --parallel
+
+      - name: Firma ad-hoc (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          for b in build/*_artefacts/Release/VST3/*.vst3 build/*_artefacts/Release/AU/*.component; do
+            codesign --force --deep --sign - "$b"
+          done
+
+      - name: Test pluginval (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_Windows.zip
+          7z x -y pluginval.zip > /dev/null
+          ./pluginval.exe --strictness-level 8 --validate-in-process --skip-gui-tests --validate "build/MayProMixTrack_artefacts/Release/VST3/May Pro Mix Track.vst3"
+          ./pluginval.exe --strictness-level 8 --validate-in-process --skip-gui-tests --validate "build/MayProMixMaster_artefacts/Release/VST3/May Pro Mix Master.vst3"
+
+      - name: Test pluginval e auval (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -sSL -o pluginval.zip https://github.com/Tracktion/pluginval/releases/latest/download/pluginval_macOS.zip
+          unzip -q -o pluginval.zip
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 8 --validate-in-process --skip-gui-tests --validate "build/MayProMixTrack_artefacts/Release/VST3/May Pro Mix Track.vst3"
+          ./pluginval.app/Contents/MacOS/pluginval --strictness-level 8 --validate-in-process --skip-gui-tests --validate "build/MayProMixMaster_artefacts/Release/VST3/May Pro Mix Master.vst3"
+          mkdir -p ~/Library/Audio/Plug-Ins/Components
+          cp -R build/*_artefacts/Release/AU/*.component ~/Library/Audio/Plug-Ins/Components/
+          killall -9 AudioComponentRegistrar || true
+          auval -v aufx MpmT MaSt
+          auval -v aufx MpmM MaSt
+
+      - name: Prepara il pacchetto
+        shell: bash
+        run: |
+          mkdir -p package
+          cp -R "build/MayProMixTrack_artefacts/Release/VST3/May Pro Mix Track.vst3" package/
+          cp -R "build/MayProMixMaster_artefacts/Release/VST3/May Pro Mix Master.vst3" package/
+          if [ -d "build/MayProMixTrack_artefacts/Release/AU" ]; then
+            cp -R "build/MayProMixTrack_artefacts/Release/AU/May Pro Mix Track.component" package/
+            cp -R "build/MayProMixMaster_artefacts/Release/AU/May Pro Mix Master.component" package/
+          fi
+          cp -R Docs package/ 2>/dev/null || true
+          cp README.md package/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MayProMix-${{ runner.os }}
+          path: package

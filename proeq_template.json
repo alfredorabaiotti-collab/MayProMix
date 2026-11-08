@@ -1,0 +1,122 @@
+{
+	"cid": "{D9AE9ACD-69B4-4B43-B8D5-983E39C559A5}",
+	"classname": "Pro EQ",
+	"parameters": 
+	{
+		"inputmeter": 
+		{
+
+		},
+		"linearlowcut": 
+		{
+			"linearphasesoft": 0.0,
+			"linearphasefreq": 0.0,
+			"linearphaseactive": 0.0
+		},
+		"lowcut": 
+		{
+			"lcfreq": @LCFREQ@,
+			"lcslope": @LCSLOPE@,
+			"lcactive": @LCON@
+		},
+		"lowfrequency": 
+		{
+			"lfgain": @LFGAIN@,
+			"lffreq": @LFFREQ@,
+			"lfq": 1.0,
+			"lftype": 0.0,
+			"lfactive": @LFON@,
+			"lfsolo": 0.0,
+			"lfdynamic": 0.0,
+			"lfdynthreshold": 0.0,
+			"lfdynrange": 0.0
+		},
+		"lowmidfrequency": 
+		{
+			"lmfgain": @B0GAIN@,
+			"lmffreq": @B0FREQ@,
+			"lmfq": @B0Q@,
+			"lmfactive": @B0ON@,
+			"lmfsolo": 0.0,
+			"lmfdynamic": 0.0,
+			"lmfdynthreshold": 0.0,
+			"lmfdynrange": 0.0
+		},
+		"midfrequency": 
+		{
+			"mfgain": @B1GAIN@,
+			"mffreq": @B1FREQ@,
+			"mfq": @B1Q@,
+			"mfactive": @B1ON@,
+			"mfsolo": 0.0,
+			"mfdynamic": 0.0,
+			"mfdynthreshold": 0.0,
+			"mfdynrange": 0.0
+		},
+		"highmidfrequency": 
+		{
+			"hmfgain": @B2GAIN@,
+			"hmffreq": @B2FREQ@,
+			"hmfq": @B2Q@,
+			"hmfactive": @B2ON@,
+			"hmfsolo": 0.0,
+			"hmfdynamic": 0.0,
+			"hmfdynthreshold": 0.0,
+			"hmfdynrange": 0.0
+		},
+		"highfrequency": 
+		{
+			"hfgain": @HFGAIN@,
+			"hffreq": @HFFREQ@,
+			"hfq": 1.0,
+			"hftype": 1.0,
+			"hfactive": @HFON@,
+			"hfsolo": 0.0,
+			"hfdynamic": 0.0,
+			"hfdynthreshold": 0.0,
+			"hfdynrange": 0.0
+		},
+		"highcut": 
+		{
+			"hcfreq": 20000.0,
+			"hcslope": 1.0,
+			"hcactive": 0.0
+		},
+		"gain": 
+		{
+			"gain": 0.0,
+			"autogain": 0.0,
+			"highqual": 1.0
+		},
+		"outputmeter": 
+		{
+
+		},
+		"spectrum": 
+		{
+
+		},
+		"opt": 
+		{
+			"viewmode": 1.0,
+			"showControls": 0.0,
+			"showDynamics": 0.0,
+			"solo": 0.0
+		},
+		"ui": 
+		{
+			"showfft": 2.0,
+			"analyzerRangeMin": 3.0,
+			"analyzerRangeMax": 2.0,
+			"sidehold": 0.0,
+			"displayRange": 2.0
+		}
+	},
+	"component": 
+	{
+		"autogaincomponent": 
+		{
+			"legacyAutoGain": 0
+		}
+	}
+}

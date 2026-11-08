@@ -16,10 +16,12 @@ Formati: VST3 (Windows e Mac), AU (Mac).
 ## Funzioni principali
 
 - Loudness ITU-R BS.1770 (LUFS integrata e a breve termine), picchi, fattore di cresta, correlazione stereo e mono dei bassi
-- Spettro a 8 bande confrontato con il profilo del ruolo (15 ruoli, riconosciuti anche dal nome della traccia)
+- Spettro a 8 bande confrontato con il profilo del ruolo (40 ruoli: band, 19 strumenti e sezioni d'orchestra, 5 tipi di pad, riconosciuti anche dal nome della traccia)
 - 14 generi (rock, hard rock, pop, country, country rock, blues, folk, ballata, cantautorato, funk, jazz, elettronica, hip hop...) che cambiano livelli, timbro, compressione e consigli
 - Bilanciamento tonale del mix con punti cliccabili sulle discrepanze e scala regolabile
-- Consigli con colori di gravita', pulsante Applica per i livelli e spunta Fatto con verifica e consiglio aggiuntivo
+- Consigli con colori di gravita', pulsante Applica per i livelli, Bilancia tutte nel Master e spunta Fatto con verifica e consiglio aggiuntivo
+- Correzione integrata nel Track (passa-alto, 3 bande EQ, compressore, de-esser) impostata con un clic da "Applica correzione"
+- Preset di Pro EQ3 e Compressor nativi generati dal pannello, da trascinare sulla traccia in Studio Pro
 - Elenco delle tracce ordinate per problemi, riferimento personale, tutorial all'apertura
 
 ## Installazione rapida

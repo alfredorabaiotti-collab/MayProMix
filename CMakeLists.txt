@@ -29,7 +29,9 @@ if(MAY_BUILD_STANDALONE)
     list(APPEND MAY_FORMATS Standalone)
 endif()
 
-juce_add_binary_data(MayProMixData SOURCES Resources/logo.png)
+juce_add_binary_data(MayProMixData SOURCES Resources/logo.png
+    Resources/presets/proeq_template.json Resources/presets/proeq_metainfo.xml
+    Resources/presets/comp_template.json Resources/presets/comp_metainfo.xml)
 
 set(MAY_SHARED_SOURCES
     Source/Shared/SharedBus.cpp

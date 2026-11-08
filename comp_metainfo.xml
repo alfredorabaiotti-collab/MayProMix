@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MetaInformation>
+	<Attribute id="Class:ID" value="{36F3F4D1-CBB4-4BF7-A7E3-EBCCED53718B}"/>
+	<Attribute id="Class:Name" value="Compressor"/>
+	<Attribute id="Class:Category" value="AudioEffect"/>
+	<Attribute id="Class:SubCategory" value="(Native)/Mixing"/>
+	<Attribute id="Class:Vendor" value="Fender"/>
+	<Attribute id="DeviceSlot:deviceName" value="Compressor"/>
+	<Attribute id="DeviceSlot:deviceUID" value="{9FB4834F-09D9-42E2-A222-736F89CCF8F3}"/>
+	<Attribute id="DeviceSlot:slotUID" value="@SLOTUID@"/>
+	<Attribute id="Document:Title" value="@TITLE@"/>
+	<Attribute id="Document:MimeType" value="application/x.ccl-preset"/>
+	<Attribute id="Document:Creator" value="May Pro Mix"/>
+	<Attribute id="Document:Generator" value="Studio Pro/8.2.0.114903"/>
+	<Attribute id="Preset:DataFile" value="data.dsppreset"/>
+	<Attribute id="Preset:DataMimeType" value="audio/x-dsp-preset+json"/>
+</MetaInformation>
