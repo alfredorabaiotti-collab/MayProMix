@@ -102,13 +102,14 @@ public:
 private:
     void timerCallback() override;
     void refreshTexts();
+    void balanceAll();
 
     MasterProcessor& proc;
     mpm::ui::LookAndFeel lnf;
     juce::Image logo;
 
     juce::ComboBox genreBox, targetBox;
-    juce::TextButton refBtn, storeBtn, resetBtn, helpBtn { "?" };
+    juce::TextButton refBtn, storeBtn, resetBtn, helpBtn { "?" }, balanceBtn;
     mpm::ui::LangSwitch lang;
     mpm::ui::Ring loudRing, fullRing;
     mpm::ui::SpectrumView spectrum;

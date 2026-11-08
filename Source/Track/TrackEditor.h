@@ -2,6 +2,7 @@
 #include "TrackProcessor.h"
 #include "../Shared/Theme.h"
 #include "../Shared/Tutorial.h"
+#include "FixPanel.h"
 
 class TrackEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -30,12 +31,14 @@ private:
     juce::TextButton helpBtn { "?" };
     juce::TextButton analyseBtn;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> analyseAttach;
+    mpm::ui::FixPanel fixPanel;
     mpm::ui::Tutorial tutorial;
+    juce::TooltipWindow tooltips { this, 600 };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> trimAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> roleAttach;
 
-    juce::Rectangle<int> topArea, leftArea, specArea, adviceArea, statsArea;
+    juce::Rectangle<int> topArea, leftArea, specArea, fixArea, adviceArea, statsArea;
     mpm::TrackInfo info;
     bool hasInfo = false, trackOk = false;
     int tick = 0;

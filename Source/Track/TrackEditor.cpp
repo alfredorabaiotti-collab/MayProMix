@@ -4,13 +4,13 @@
 using namespace mpm;
 using namespace mpm::ui;
 
-TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p)
+TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p), fixPanel (p)
 {
     setLookAndFeel (&lnf);
     logo = juce::ImageCache::getFromMemory (BinaryData::logo_png, BinaryData::logo_pngSize);
     lastEnglish = SharedBus::get().english();
 
-    roleBox.addItemList (Advisor::roleChoices(), 1);
+    Advisor::fillRoleCombo (roleBox);
     addAndMakeVisible (roleBox);
     roleAttach = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (proc.apvts, "role", roleBox);
 
@@ -34,6 +34,15 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     addAndMakeVisible (advice);
     advice.onApplyLevel = [this] (float target) { proc.setTrimTarget (target); };
     spectrum.onGoToAdvice = [this] (int band) { advice.focusBand (band); };
+    addAndMakeVisible (fixPanel);
+    // "Applica correzione": imposta la correzione integrata, segna Fatto e fa ripartire l'analisi
+    advice.onApplyFix = [this] (const Advice& a)
+    {
+        if (proc.getSlot() >= 0 && a.checkable())
+            SharedBus::get().setDone (proc.getSlot(), a.key, a.title, true);
+        proc.applyFix (a.fix);
+        tick = 0;
+    };
     // solo cambio di stato: le schede vengono ricostruite dal timer (mai dentro il click)
     advice.onDoneChanged = [this] (const Advice& a, bool on)
     {
@@ -47,8 +56,8 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
 
     refreshTexts();
     setResizable (true, true);
-    setResizeLimits (1000, 580, 1600, 1100);
-    setSize (1040, 660);
+    setResizeLimits (1060, 760, 1700, 1200);
+    setSize (1120, 820);
     if (! Tutorial::alreadySeen())
         tutorial.start();
     startTimerHz (15);
@@ -65,13 +74,14 @@ void TrackEditor::refreshTexts()
     lastEnglish = SharedBus::get().english();
     const int sel = roleBox.getSelectedItemIndex();
     roleBox.clear (juce::dontSendNotification);
-    roleBox.addItemList (Advisor::roleChoices(), 1);
+    Advisor::fillRoleCombo (roleBox);
     roleBox.setSelectedItemIndex (sel, juce::dontSendNotification);
     resetBtn.setButtonText (tr ("Azzera analisi", "Reset analysis"));
     analyseBtn.setButtonText (analyseBtn.getToggleState() ? tr ("Analizza", "Analyse") : tr ("Esclusa", "Excluded"));
     analyseBtn.setTooltip (tr ("Spegni quando la traccia e' in mute", "Turn off when the track is muted"));
     trim.setTooltip (tr ("Trim di uscita: usalo per bilanciare il mix", "Output trim: use it to balance the mix"));
     tutorial.update();
+    fixPanel.refreshTexts();
     tick = 0;
     repaint();
     timerCallback();
@@ -84,7 +94,9 @@ void TrackEditor::resized()
     r.removeFromTop (10);
     leftArea = r.removeFromLeft (260);
     r.removeFromLeft (10);
-    specArea = r.removeFromTop (juce::jmax (200, r.getHeight() * 2 / 5));
+    specArea = r.removeFromTop (190);
+    r.removeFromTop (10);
+    fixArea = r.removeFromTop (230);
     r.removeFromTop (10);
     adviceArea = r;
 
@@ -110,6 +122,7 @@ void TrackEditor::resized()
 
     spectrum.setBounds (specArea.reduced (12, 10).withTrimmedTop (4));
     advice.setBounds (adviceArea.reduced (12).withTrimmedTop (34));
+    fixPanel.setBounds (fixArea);
     tutorial.setBounds (getLocalBounds());
 }
 

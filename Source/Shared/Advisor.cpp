@@ -20,10 +20,34 @@ juce::String Advisor::roleName (Role r)
         case Role::AcousticGuitar: return tr ("Chitarra acustica", "Acoustic guitar");
         case Role::LeadGuitar:     return tr ("Chitarra solista", "Lead guitar");
         case Role::Keys:           return tr ("Tastiere / piano", "Keys / piano");
-        case Role::Pad:            return tr ("Pad / synth / archi", "Pad / synth / strings");
+        case Role::Pad:            return tr ("Pad / synth (generico)", "Pad / synth (generic)");
         case Role::Percussion:     return tr ("Percussioni", "Percussion");
         case Role::Other:          return tr ("Altro", "Other");
         case Role::Group:          return tr ("Bus / gruppo (escluso)", "Bus / group (excluded)");
+        case Role::Violins:        return tr ("Violini", "Violins");
+        case Role::Violas:         return tr ("Viole", "Violas");
+        case Role::Cellos:         return tr ("Violoncelli", "Cellos");
+        case Role::DoubleBasses:   return tr ("Contrabbassi", "Double basses");
+        case Role::StringSection:  return tr ("Sezione archi", "String section");
+        case Role::Flute:          return tr ("Flauto / ottavino", "Flute / piccolo");
+        case Role::Oboe:           return tr ("Oboe / corno inglese", "Oboe / cor anglais");
+        case Role::Clarinet:       return tr ("Clarinetto", "Clarinet");
+        case Role::Bassoon:        return tr ("Fagotto", "Bassoon");
+        case Role::WoodwindSection:return tr ("Sezione legni", "Woodwind section");
+        case Role::FrenchHorns:    return tr ("Corni", "French horns");
+        case Role::Trumpets:       return tr ("Trombe", "Trumpets");
+        case Role::Trombones:      return tr ("Tromboni", "Trombones");
+        case Role::Tuba:           return tr ("Tuba", "Tuba");
+        case Role::BrassSection:   return tr ("Sezione ottoni", "Brass section");
+        case Role::Timpani:        return tr ("Timpani", "Timpani");
+        case Role::OrchPercussion: return tr ("Percussioni orchestrali (glockenspiel, xilofono, campane)", "Orchestral percussion (glockenspiel, xylophone, bells)");
+        case Role::Harp:           return tr ("Arpa", "Harp");
+        case Role::Choir:          return tr ("Coro", "Choir");
+        case Role::PadWarm:        return tr ("Pad caldo (analogico)", "Warm pad (analog)");
+        case Role::PadStrings:     return tr ("Pad archi", "String pad");
+        case Role::PadChoir:       return tr ("Pad corale / voci", "Choir / vox pad");
+        case Role::PadAmbient:     return tr ("Pad ambient / atmosfera", "Ambient / texture pad");
+        case Role::PadBright:      return tr ("Pad luminoso / shimmer", "Bright / shimmer pad");
         default:                   return {};
     }
 }
@@ -33,6 +57,18 @@ juce::StringArray Advisor::roleChoices()
     juce::StringArray s;
     for (int i = 0; i < kNumRoles; ++i) s.add (roleName ((Role) i));
     return s;
+}
+
+void Advisor::fillRoleCombo (juce::ComboBox& box)
+{
+    // gli item restano nell'ordine dei ruoli (l'indice coincide con il parametro); le intestazioni non contano come item
+    for (int i = 0; i < kNumRoles; ++i)
+    {
+        if (i == 1)                     box.addSectionHeading (tr ("Band", "Band"));
+        if (i == kFirstOrchestraRole)   box.addSectionHeading (tr ("Orchestra", "Orchestra"));
+        if (i == kFirstPadRole)         box.addSectionHeading ("Pad");
+        box.addItem (roleName ((Role) i), i + 1);
+    }
 }
 
 juce::String Advisor::bandName (int b)
@@ -185,10 +221,12 @@ Snapshot Advisor::capture()
         t.colour = juce::Colour (s.colour);
         t.numChannels = juce::jlimit (1, 2, (int) s.numChannels);
         t.excluded = s.excluded != 0;
+        for (int k = 0; k < fsCount; ++k) t.fixState[k] = finiteOr (s.fixState[k], 0.0f);
         t.trimDb = juce::jlimit (-24.0f, 24.0f, finiteOr (s.trimDb, 0.0f));
         auto add = [&t, &db] (float v) { v = db (v); return v > -99.0f ? v + t.trimDb : v; };
         t.shortLufs = add (s.shortLufs);
         t.integratedLufs = add (s.integratedLufs);
+        t.rawIntegrated = db (s.integratedLufs);
         t.recentPeakDb = add (s.recentPeakDb);
         t.maxPeakDb = add (s.maxPeakDb);
         t.crestDb = juce::jlimit (0.0f, 60.0f, finiteOr (s.crestDb, 0.0f));
@@ -223,6 +261,40 @@ Snapshot Advisor::capture()
         for (auto& o : snap.tracks) if (o.analysed() && o.role == t.role) ++same;
         const int fam = roleFamily (t.role);
         t.targetRel = prof.level + (fam >= 0 ? gp.offset[fam] : 0.0f) - 10.0f * std::log10 ((float) juce::jmax (1, same));
+    }
+
+    // Normalizzazione: i livelli relativi delle tracce sommano sempre a 0 dB (la loro somma e' il mix).
+    // Anche i riferimenti devono sommare a 0 dB sulle tracce presenti, altrimenti sarebbe impossibile
+    // accontentarle tutte: abbassando una traccia, le altre risulterebbero automaticamente "piu' alte".
+    {
+        double targetSum = 0, otherShare = 0;
+        int targeted = 0;
+        for (auto& t : snap.tracks)
+        {
+            if (! t.analysed() || t.role == Role::Group || std::isnan (t.relLevel)) continue;
+            if (std::isnan (t.targetRel)) otherShare += dbToPow (t.relLevel);
+            else { targetSum += dbToPow (t.targetRel); ++targeted; }
+        }
+        snap.balanceReady = targeted >= 3;
+        if (targeted >= 2 && targetSum > 0)
+        {
+            const double avail = juce::jmax (0.1, 1.0 - otherShare);
+            const float offset = (float) (10.0 * std::log10 (avail / targetSum));
+            juce::Array<float> deltas;
+            for (auto& t : snap.tracks)
+                if (! std::isnan (t.targetRel) && ! std::isnan (t.relLevel))
+                {
+                    t.targetRel += offset;
+                    deltas.add (t.targetRel - t.relLevel);
+                }
+
+            // le correzioni partono dalla traccia "mediana": i Trim restano vicini a 0 dB
+            std::sort (deltas.begin(), deltas.end());
+            const float median = deltas.isEmpty() ? 0.0f : deltas[deltas.size() / 2];
+            for (auto& t : snap.tracks)
+                if (! std::isnan (t.targetRel) && ! std::isnan (t.relLevel))
+                    t.levelDelta = (t.targetRel - t.relLevel) - median;
+        }
     }
     snap.conflictList = conflicts (snap);
     return snap;
@@ -327,12 +399,12 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
     }
 
     // Guadagno / picchi
-    if (t.maxPeakDb > -1.0f)
-        add ("peak", 2, catGain, tr ("Picchi vicini allo 0 dBFS", "Peaks close to 0 dBFS"),
-             tr ("Picco massimo ", "Max peak ") + num (t.maxPeakDb) + tr (" dBFS. Abbassa il gain di ingresso (Clip Gain o Trim) di circa ",
-                                                                         " dBFS. Lower the input gain (Clip Gain or Trim) by about ")
-                 + num (t.maxPeakDb + 6.0f, 0) + tr (" dB: punta a picchi intorno a -6 dBFS, cosi' compressori ed emulazioni analogiche lavorano bene.",
-                                                       " dB: aim for peaks around -6 dBFS so compressors and analogue emulations behave well."));
+    if (t.maxPeakDb - t.trimDb > -0.5f)
+        add ("peak", 1, catGain, tr ("Picchi vicini allo 0 dBFS", "Peaks close to 0 dBFS"),
+             tr ("Picco massimo in ingresso ", "Max input peak ") + num (t.maxPeakDb - t.trimDb) + tr (" dBFS. Abbassa il Clip Gain dell'evento audio (non il Trim) di circa ",
+                                                                         " dBFS. Lower the audio event Clip Gain (not the Trim) by about ")
+                 + num (t.maxPeakDb - t.trimDb + 6.0f, 0) + tr (" dB: i plug-in prima di May Pro Mix lavorano meglio con picchi intorno a -6 dBFS. Il Trim serve solo al bilanciamento.",
+                                                       " dB: plug-ins before May Pro Mix work better with peaks around -6 dBFS. The Trim is only for balance."));
     else if (t.integratedLufs < -38.0f && t.maxPeakDb < -20.0f)
         add ("lowsig", 0, catGain, tr ("Segnale molto basso", "Very low signal"),
              tr ("Alza il Clip Gain di qualche dB: i plug-in di emulazione analogica rendono meglio con livelli intorno a -18 dBFS RMS.",
@@ -352,19 +424,19 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
              tr ("Con un ruolo preciso (voce, basso, chitarra...) i consigli su livello, EQ e dinamica diventano molto piu' accurati.",
                  "With a precise role (vocal, bass, guitar...) level, EQ and dynamics advice become much more accurate."));
 
-    // Livello nel mix
-    if (! std::isnan (t.targetRel) && ! std::isnan (t.relLevel))
+    // Livello nel mix (solo con almeno 3 tracce analizzate: prima il confronto non e' affidabile)
+    if (s.balanceReady && std::isfinite (t.levelDelta))
     {
-        const float delta = roundHalf (t.targetRel - t.relLevel);
+        const float delta = roundHalf (juce::jlimit (-24.0f, 24.0f, t.levelDelta));
         if (std::abs (delta) >= 2.0f)
         {
             const bool up = delta > 0;
             add ("lvl", std::abs (delta) >= 6.0f ? 2 : 1, catLevel,
                  (up ? tr ("Alza di ", "Raise by ") : tr ("Abbassa di ", "Lower by ")) + num (std::abs (delta)) + " dB",
                  tr ("La traccia e' a ", "The track sits at ") + num (t.relLevel, 1, true) + tr (" LU rispetto al mix; per ", " LU relative to the mix; for ")
-                     + tr (gp.nameIt, gp.nameEn) + tr (" il riferimento e' circa ", " the reference is about ") + num (t.targetRel, 1, true)
-                     + tr (" LU. Usa il Trim di May Pro Mix Track (il plug-in misura prima del fader) o il pulsante Applica.",
-                           " LU. Use the May Pro Mix Track Trim (the plug-in measures pre-fader) or the Apply button."),
+                     + tr (gp.nameIt, gp.nameEn) + tr (", con le tracce di questo brano, il riferimento e' circa ", ", with the tracks of this song, the reference is about ") + num (t.targetRel, 1, true)
+                     + tr (" LU. La correzione tiene conto anche delle altre tracce: con \"Bilancia tutte\" nel Master le sistemi in un colpo solo.",
+                           " LU. The correction also accounts for the other tracks: \"Balance all\" in the Master fixes them in one go."),
                  {}, delta);
         }
     }
@@ -374,7 +446,8 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
     bool hpfDone = false;
     if (prof.hpfHz > 0)
     {
-        const bool lowRole = t.role == Role::Kick || t.role == Role::Bass || t.role == Role::DrumBus;
+        const bool lowRole = t.role == Role::Kick || t.role == Role::Bass || t.role == Role::DrumBus
+                          || t.role == Role::DoubleBasses || t.role == Role::Tuba;
         const bool excess = lowRole ? (rel[0] > rel[1] + 3.0f)
                                     : (rel[0] > prof.bands[0] + 8.0f || (prof.hpfHz >= 100 && rel[1] > prof.bands[1] + 8.0f));
         if (excess)
@@ -385,7 +458,11 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                      + tr (": toglila con un passa-alto da 12-24 dB/ottava. Libera spazio per cassa e basso e pulisce il mix.",
                            ": remove it with a 12-24 dB/oct high-pass. It frees room for kick and bass and cleans up the mix."),
                  cat.suggest (Tool::EQ));
-            out.getReference (out.size() - 1).band = rel[0] > prof.bands[0] + 8.0f ? 0 : 1;
+            auto& last = out.getReference (out.size() - 1);
+            last.band = rel[0] > prof.bands[0] + 8.0f ? 0 : 1;
+            last.fix.type = FixType::Hpf;
+            last.fix.freq = prof.hpfHz;
+            last.fix.slope = 12;
         }
     }
 
@@ -413,7 +490,7 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
             const auto shape = mv.band == kNumBands - 1 ? tr ("Shelf alto da 10 kHz", "High shelf from 10 kHz")
                              : mv.band == 4 ? tr ("Campana larga, Q 0,7", "Wide bell, Q 0.7")
                                             : tr ("Campana, Q ", "Bell, Q ") + num (cut ? 1.4f : 1.0f);
-            const bool sibilant = cut && mv.band == 6 && (t.role == Role::LeadVocal || t.role == Role::BackingVocal);
+            const bool sibilant = cut && mv.band == 6 && (t.role == Role::LeadVocal || t.role == Role::BackingVocal || t.role == Role::Choir);
             add ("eq" + juce::String (mv.band), std::abs (mv.amount) >= 5.0f ? 2 : 1, catEq,
                  (cut ? tr ("Taglia ", "Cut ") : tr ("Aggiungi ", "Boost ")) + num (std::abs (mv.amount)) + " dB "
                      + tr ("a ", "at ") + freqText (kBandCentre[mv.band]),
@@ -421,7 +498,22 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                      + eqWhy (mv.band, cut) + ". " + shape + "."
                      + (sibilant ? tr (" Sulla voce preferisci un de-esser tra 5 e 8 kHz.", " On vocals prefer a de-esser between 5 and 8 kHz.") : juce::String()),
                  sibilant ? cat.suggest (Tool::DeEsser) : cat.suggest (Tool::EQ));
-            out.getReference (out.size() - 1).band = mv.band;
+            auto& last = out.getReference (out.size() - 1);
+            last.band = mv.band;
+            if (sibilant)
+            {
+                last.fix.type = FixType::DeEss;
+                last.fix.freq = 6500.0f;
+                last.fix.thr = -14.0f;
+                last.fix.range = juce::jlimit (3.0f, 8.0f, std::abs (mv.amount) + 2.0f);
+            }
+            else
+            {
+                last.fix.type = FixType::Eq;
+                last.fix.gain = mv.amount;
+                if (mv.band == kNumBands - 1) { last.fix.shape = 2; last.fix.freq = 10000.0f; last.fix.q = 0.7f; }
+                else { last.fix.shape = 0; last.fix.freq = kBandCentre[mv.band]; last.fix.q = mv.band == 4 ? 0.7f : (cut ? 1.4f : 1.0f); }
+            }
         }
     }
 
@@ -443,6 +535,22 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                               " Better in two stages: a fast compressor for peaks and a slow (opto style) one to level.");
             add ("comp", gr >= 6.0f ? 2 : 1, catDyn, tr ("Comprimi: circa ", "Compress: about ") + num (gr) + tr (" dB di riduzione", " dB of gain reduction"),
                  detail, cat.suggest (Tool::Compressor));
+            {
+                // soglia calcolata sul livello misurato (dopo la correzione, prima del trim)
+                auto& last = out.getReference (out.size() - 1);
+                const float ratio = juce::jmax (1.5f, juce::String (prof.ratio).upToFirstOccurrenceOf (":", false, false).getFloatValue());
+                const float slope = 1.0f - 1.0f / ratio;
+                const bool ours = t.fixState[fsEnabled] > 0.5f && t.fixState[fsCompOn] > 0.5f;
+                last.fix.type = FixType::Comp;
+                last.fix.ratio = ratio;
+                last.fix.attack = (float) prof.attackMs;
+                last.fix.release = (float) prof.releaseMs;
+                last.fix.thr = ours ? t.fixState[fsCompThr] - gr * 0.6f / slope
+                                    : (t.rawIntegrated + 3.0f) - gr / slope;
+                last.fix.thr = juce::jlimit (-60.0f, -1.0f, std::round (last.fix.thr));
+                last.fix.makeup = ours ? juce::jlimit (0.0f, 18.0f, t.fixState[fsCompMakeup] + std::round (gr * 0.3f))
+                                       : std::round (gr * 0.5f);
+            }
         }
         else if (t.crestDb < cMin - 1.5f && t.crestDb > 0.5f)
         {
@@ -451,6 +559,8 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                      + num (cMin, 0) + tr (" dB: alza la soglia o riduci il ratio. Per ritrovare i transienti prova un attacco piu' lento (30 ms).",
                                            " dB: raise the threshold or lower the ratio. To bring transients back try a slower attack (30 ms)."),
                  cat.suggest (t.role == Role::Kick || t.role == Role::Snare ? Tool::Transient : Tool::Compressor));
+            if (t.fixState[fsEnabled] > 0.5f && t.fixState[fsCompOn] > 0.5f)
+                out.getReference (out.size() - 1).fix.type = FixType::CompSoften;
         }
     }
 
@@ -462,12 +572,13 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                  tr ("Correlazione ", "Correlation ") + num (t.correlation, 2)
                      + tr (": in mono la traccia si svuota. Controlla la polarita' dei microfoni o allineali nel tempo.",
                            ": the track collapses in mono. Check microphone polarity or time-align them."));
-        else if ((t.role == Role::Kick || t.role == Role::Bass) && t.lowCorrelation < 0.8f)
+        else if ((t.role == Role::Kick || t.role == Role::Bass || t.role == Role::DoubleBasses || t.role == Role::Tuba) && t.lowCorrelation < 0.8f)
             add ("lowmono", 1, catStereo, tr ("Bassi non mono", "Low end not mono"),
                  tr ("Sotto i 120 Hz la traccia e' larga: rendila mono in quella zona per un mix piu' solido e compatibile.",
                      "Below 120 Hz the track is wide: make it mono there for a solid, compatible mix."),
                  cat.suggest (Tool::Imager));
-        else if (t.correlation > 0.97f && (t.role == Role::RhythmGuitar || t.role == Role::Keys || t.role == Role::Pad || t.role == Role::AcousticGuitar))
+        else if (t.correlation > 0.97f && (t.role == Role::RhythmGuitar || t.role == Role::Keys || t.role == Role::Pad || t.role == Role::AcousticGuitar
+                                           || t.role == Role::StringSection || t.role == Role::Choir || (int) t.role >= kFirstPadRole))
             add ("fakestereo", 0, catStereo, tr ("Stereo solo di nome", "Stereo in name only"),
                  tr ("La traccia e' praticamente mono: puoi convertirla in mono e pannarla, oppure registrare una seconda ripresa da aprire a sinistra e destra.",
                      "The track is practically mono: convert it to mono and pan it, or record a second take to spread left and right."));
@@ -498,6 +609,7 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
             continue;
         }
 
+        const int before = out.size();
         if (kickBass && c.band <= 2)
             add ("mask" + juce::String (o.slot), c.score > 0.8f ? 2 : 1, catSpace, tr ("Cassa e basso si pestano i piedi", "Kick and bass are fighting"),
                  tr ("Entrambi forti in ", "Both strong in ") + band
@@ -520,6 +632,17 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
             add ("mask" + juce::String (o.slot), c.score > 0.8f ? 2 : 1, catSpace, tr ("Si sovrappone a ", "Overlaps with ") + o.name,
                  band + tr (": taglia 2-3 dB a ", ": cut 2-3 dB at ") + f + tr (" (Q 1,5) su questa traccia per lasciare spazio a ", " (Q 1.5) on this track to make room for ") + o.name + ".",
                  cat.suggest (Tool::EQ));
+
+        // con un clic: taglio a campana sulla traccia meno importante (non per cassa/basso: li' serve il sidechain)
+        if (out.size() > before && ! (kickBass && c.band <= 2))
+        {
+            auto& last = out.getReference (out.size() - 1);
+            last.fix.type = FixType::Eq;
+            last.fix.shape = 0;
+            last.fix.freq = kBandCentre[c.band];
+            last.fix.gain = guitars ? -2.0f : -2.5f;
+            last.fix.q = vsVocal ? 1.2f : 1.5f;
+        }
     }
 
     if (out.isEmpty())
@@ -747,6 +870,7 @@ void Advisor::applyDoneMarks (juce::Array<Advice>& list, int slot, bool analysed
             {
                 a.status = 2;
                 a.severity = juce::jmax (1, a.severity);
+                if (a.fix.type == FixType::Hpf) { a.fix.freq *= 1.25f; a.fix.slope = 24; }   // secondo livello: piu' alto e piu' ripido
                 a.detail = tr ("Segnato come fatto, ma il problema c'e' ancora. ", "Marked as done, but the problem is still there. ")
                            + followUp (key) + "\n" + tr ("Consiglio originale: ", "Original advice: ") + a.detail;
             }

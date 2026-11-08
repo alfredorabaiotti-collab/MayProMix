@@ -70,7 +70,7 @@ public:
         setColour (juce::ToggleButton::tickDisabledColourId, C::dim);
     }
 
-    juce::Font getComboBoxFont (juce::ComboBox&) override { return font (13.0f, true); }
+    juce::Font getComboBoxFont (juce::ComboBox& b) override { return font (b.getName() == "small" ? 11.5f : 13.0f, true); }
     juce::Font getPopupMenuFont() override                { return font (14.0f); }
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return font (12.5f, true); }
 
@@ -130,31 +130,41 @@ public:
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float a0, float a1, juce::Slider& s) override
     {
-        auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (8.0f);
+        const bool compact = s.getName() == "compact";
+        auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (compact ? 2.0f : 8.0f);
         const float size = juce::jmin (r.getWidth(), r.getHeight());
         r = r.withSizeKeepingCentre (size, size);
-        const float rad = size * 0.5f - 6.0f;
+        const float stroke = compact ? juce::jmax (3.0f, size * 0.08f) : 8.0f;
+        const float rad = size * 0.5f - stroke * 0.75f;
         const auto c = r.getCentre();
 
         g.setColour (juce::Colour (0xff1b222b));
-        g.fillEllipse (r.reduced (16.0f));
+        g.fillEllipse (r.reduced (compact ? stroke * 1.6f : 16.0f));
         g.setColour (juce::Colour (0xff11161c));
-        g.drawEllipse (r.reduced (16.0f), 2.0f);
+        g.drawEllipse (r.reduced (compact ? stroke * 1.6f : 16.0f), compact ? 1.2f : 2.0f);
 
         juce::Path bgArc, valArc;
         bgArc.addCentredArc (c.x, c.y, rad, rad, 0, a0, a1, true);
         g.setColour (juce::Colour (0xff1a2028));
-        g.strokePath (bgArc, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (bgArc, juce::PathStrokeType (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // arco dal centro (0 dB) verso il valore
-        const float mid = a0 + (a1 - a0) * 0.5f;
+        // bipolare (es. guadagno -15..+15): l'arco parte dal centro; altrimenti dall'inizio
+        const bool bipolar = s.getMinimum() < 0.0 && s.getMaximum() > 0.0;
+        const float from = bipolar ? a0 + (a1 - a0) * (float) ((0.0 - s.getMinimum()) / (s.getMaximum() - s.getMinimum())) : a0;
         const float av = a0 + pos * (a1 - a0);
-        valArc.addCentredArc (c.x, c.y, rad, rad, 0, juce::jmin (mid, av), juce::jmax (mid, av) + 0.001f, true);
-        g.setColour (C::teal);
-        g.strokePath (valArc, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        valArc.addCentredArc (c.x, c.y, rad, rad, 0, juce::jmin (from, av), juce::jmax (from, av) + 0.001f, true);
+        const bool active = s.isEnabled() && (s.getParentComponent() == nullptr || s.getParentComponent()->isEnabled());
+        g.setColour (active ? C::teal : C::dim);
+        g.strokePath (valArc, juce::PathStrokeType (stroke, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
         const auto v = (float) s.getValue();
         g.setColour (C::text);
+        if (compact)
+        {
+            g.setFont (font (juce::jlimit (9.0f, 13.0f, size * 0.22f), true));
+            g.drawText (s.getTextFromValue (v), r.expanded (6, 0), juce::Justification::centred, false);
+            return;
+        }
         g.setFont (font (size * 0.17f, true));
         g.drawText (num (v, 1, true), r.withTrimmedBottom (size * 0.08f), juce::Justification::centred);
         g.setColour (C::dim);
@@ -493,6 +503,7 @@ class AdviceList : public juce::Component
 public:
     std::function<void (float)> onApplyLevel;                   // riceve il valore ASSOLUTO del trim
     std::function<void (const Advice&, bool)> onDoneChanged;
+    std::function<void (const Advice&)> onApplyFix;             // imposta la correzione integrata
 
     AdviceList()
     {
@@ -551,7 +562,8 @@ private:
             return C::severity (a.severity);
         }
 
-        void build (int width, bool allowApply, std::function<void (float)> cb, std::function<void (const Advice&, bool)> doneCb)
+        void build (int width, bool allowApply, std::function<void (float)> cb, std::function<void (const Advice&, bool)> doneCb,
+                    std::function<void (const Advice&)> fixCb)
         {
             juce::String tag = a.category.toUpperCase();
             if (a.status == 1) tag << "  |  " << tr ("FATTO, DA VERIFICARE", "DONE, TO VERIFY");
@@ -568,9 +580,20 @@ private:
             layout.createLayout (s, (float) width - 28.0f);
             textH = layout.getHeight();
 
-            const bool showApply = allowApply && std::isfinite (a.levelDelta) && std::isfinite (a.levelTarget);
+            const bool levelApply = allowApply && std::isfinite (a.levelDelta) && std::isfinite (a.levelTarget);
+            const bool fixApply = allowApply && a.fix.valid() && a.status != 3 && fixCb != nullptr;
+            const bool showApply = levelApply || fixApply;
             applyBtn.setVisible (showApply);
-            if (showApply)
+            if (fixApply && ! levelApply)
+            {
+                applyBtn.setButtonText (a.status == 2 ? tr ("Applica di nuovo", "Apply again") : tr ("Applica correzione", "Apply fix"));
+                applyBtn.setTooltip (tr ("Imposta la correzione integrata di May Pro Mix Track e rifa' l'analisi", "Sets the May Pro Mix Track built-in fix and re-analyses"));
+                applyBtn.setToggleState (true, juce::dontSendNotification);
+                const Advice copy = a;
+                applyBtn.onClick = [fixCb, copy] { if (fixCb) fixCb (copy); };
+                addAndMakeVisible (applyBtn);
+            }
+            else if (levelApply)
             {
                 applyBtn.setButtonText (tr ("Applica ", "Apply ") + num (a.levelDelta, 1, true) + tr (" dB al Trim", " dB to Trim"));
                 applyBtn.setToggleState (true, juce::dontSendNotification);
@@ -620,7 +643,7 @@ private:
         {
             auto* card = cards.add (new Card());
             card->a = a;
-            card->build (colW, apply, onApplyLevel, onDoneChanged);
+            card->build (colW, apply, onApplyLevel, onDoneChanged, onApplyFix);
             card->highlighted = highlightBand >= 0 && a.band == highlightBand;
             int c = 0;
             for (int k = 1; k < cols; ++k) if (colY[k] < colY[c]) c = k;

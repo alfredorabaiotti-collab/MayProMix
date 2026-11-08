@@ -17,6 +17,15 @@ struct DoneMark
 };
 constexpr int kMaxDone = 12;
 
+// indici di SlotData::fixState
+enum FixStateIndex
+{
+    fsEnabled = 0, fsHpfOn, fsHpfFreq, fsHpfSlope,
+    fsEq0On, fsEq0Type, fsEq0Freq, fsEq0Gain, fsEq0Q,       // banda k: fsEq0On + k * 5
+    fsCompOn = fsEq0On + 15, fsCompThr, fsCompRatio, fsCompAtt, fsCompRel, fsCompMakeup,
+    fsDeessOn, fsDeessFreq, fsDeessThr, fsDeessRange, fsCount
+};
+
 struct SlotData
 {
     juce::int64 lastSeenMs;
@@ -37,6 +46,10 @@ struct SlotData
     juce::uint32 trimRequestSeq;   // richiesta di variazione del trim inviata dal Master
     float trimRequestDb;
     juce::int32 excluded;          // 1 = esclusa dall'analisi (interruttore o plug-in in bypass)
+    // correzione integrata: stato attuale (scritto dalla traccia) e richieste di modifica (dal Master)
+    float fixState[32];
+    juce::uint32 fixRequestSeq;
+    float fixRequest[16];
     juce::uint32 excludeRequestSeq;
     juce::int32 excludeRequestValue;
     DoneMark done[kMaxDone];

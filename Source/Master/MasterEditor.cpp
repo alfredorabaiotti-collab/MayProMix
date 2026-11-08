@@ -319,6 +319,20 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
         tick = 0;
         timerCallback();
     };
+    advice.onApplyFix = [this] (const Advice& a)
+    {
+        // il Master chiede alla traccia di impostare la propria correzione integrata
+        const int slot = rows.selectedSlot;
+        if (slot < 0 || slot >= kMaxSlots || ! a.fix.valid()) return;
+        if (a.checkable()) SharedBus::get().setDone (slot, a.key, a.title, true);
+        auto& s = SharedBus::get().bus().slots[slot];
+        a.fix.toArray (s.fixRequest);
+        std::atomic_thread_fence (std::memory_order_release);
+        s.fixRequestSeq = s.fixRequestSeq + 1;
+        tick = 0;
+    };
+    balanceBtn.onClick = [this] { balanceAll(); };
+    addAndMakeVisible (balanceBtn);
     advice.onDoneChanged = [this] (const Advice& a, bool on)
     {
         SharedBus::get().setDone (rows.selectedSlot, a.key, a.title, on);
@@ -350,8 +364,8 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
     addChildComponent (tutorial);
     refreshTexts();
     setResizable (true, true);
-    setResizeLimits (1100, 700, 1800, 1200);
-    setSize (1200, 780);
+    setResizeLimits (1260, 740, 1900, 1250);
+    setSize (1280, 800);
     if (! Tutorial::alreadySeen())
         tutorial.start();
     startTimerHz (15);
@@ -361,6 +375,31 @@ MasterEditor::~MasterEditor()
 {
     stopTimer();
     setLookAndFeel (nullptr);
+}
+
+void MasterEditor::balanceAll()
+{
+    // porta tutte le tracce al livello consigliato in un colpo solo (i riferimenti sono gia' normalizzati sul brano)
+    const auto s = Advisor::capture();
+    int changed = 0;
+    if (s.balanceReady)
+    {
+        for (const auto& t : s.tracks)
+        {
+            if (! t.analysed() || ! std::isfinite (t.levelDelta) || std::abs (t.levelDelta) < 1.0f) continue;
+            if (t.slot < 0 || t.slot >= kMaxSlots) continue;
+            auto& slot = SharedBus::get().bus().slots[t.slot];
+            slot.trimRequestDb = juce::jlimit (-24.0f, 24.0f, t.trimDb + t.levelDelta);
+            std::atomic_thread_fence (std::memory_order_release);
+            slot.trimRequestSeq = slot.trimRequestSeq + 1;
+            ++changed;
+        }
+    }
+    toast = changed > 0 ? juce::String (changed) + tr (" tracce bilanciate", " tracks balanced")
+                        : (s.balanceReady ? tr ("Le tracce sono gia' bilanciate", "Tracks are already balanced")
+                                          : tr ("Servono almeno 3 tracce analizzate", "At least 3 analysed tracks are needed"));
+    toastTicks = 45;
+    tick = 0;
 }
 
 void MasterEditor::refreshTexts()
@@ -378,6 +417,8 @@ void MasterEditor::refreshTexts()
     refBtn.setButtonText (tr ("Riferimento", "Reference"));
     storeBtn.setButtonText (tr ("Memorizza riferimento", "Store reference"));
     resetBtn.setButtonText (tr ("Azzera analisi", "Reset analysis"));
+    balanceBtn.setButtonText (tr ("Bilancia tutte", "Balance all"));
+    balanceBtn.setTooltip (tr ("Porta il Trim di ogni traccia al livello consigliato per il genere", "Sets every track Trim to the level suggested for the genre"));
     tutorial.update();
     tick = 0;
     repaint();
@@ -398,18 +439,20 @@ void MasterEditor::resized()
 
     auto t = topArea.reduced (10, 13);
     t.removeFromLeft (92 + 12 + 130);
-    genreBox.setBounds (t.removeFromLeft (190));
+    genreBox.setBounds (t.removeFromLeft (170));
     t.removeFromLeft (8);
-    targetBox.setBounds (t.removeFromLeft (230));
+    targetBox.setBounds (t.removeFromLeft (190));
     t.removeFromLeft (8);
-    refBtn.setBounds (t.removeFromLeft (100));
+    refBtn.setBounds (t.removeFromLeft (96));
     t.removeFromLeft (6);
-    storeBtn.setBounds (t.removeFromLeft (164));
+    storeBtn.setBounds (t.removeFromLeft (150));
     lang.setBounds (t.removeFromRight (88));
     t.removeFromRight (8);
     helpBtn.setBounds (t.removeFromRight (32));
     t.removeFromRight (8);
     resetBtn.setBounds (t.removeFromRight (124));
+    t.removeFromRight (6);
+    balanceBtn.setBounds (t.removeFromRight (120));
 
     auto l = leftArea.reduced (14);
     l.removeFromTop (20);
@@ -575,7 +618,7 @@ void MasterEditor::timerCallback()
         {
             auto list = Advisor::forTrack (snap, idx);
             Advisor::applyDoneMarks (list, rows.selectedSlot, snap.tracks.getReference (idx).analysed());
-            advice.setAdvice (list, 1, true);
+            advice.setAdvice (list, 1, true);   // Applica: livelli e correzione integrata della traccia selezionata
         }
         else
         {

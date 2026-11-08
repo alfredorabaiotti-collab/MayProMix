@@ -2,6 +2,8 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "../Shared/Analyzer.h"
 #include "../Shared/SharedBus.h"
+#include "../Shared/Advisor.h"
+#include "FixChain.h"
 
 class TrackProcessor : public juce::AudioProcessor, private juce::Timer
 {
@@ -43,6 +45,11 @@ public:
     void applyLevelDelta (float db);
     void setTrimTarget (float db);
     void setAnalyse (bool on);
+    void applyFix (const mpm::FixAction& f);           // imposta la correzione integrata (thread dei messaggi)
+    mpm::FixSettings currentSettings() const noexcept;
+    float getCompGr() const noexcept  { return fixChain.grComp.load(); }
+    float getDeessGr() const noexcept { return fixChain.grDeess.load(); }
+    static const juce::StringArray& fixParamIds();
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -54,7 +61,10 @@ private:
     mpm::AnalysisResults results;
     juce::uint32 ownerId;
     std::atomic<int> slot { -1 };
-    juce::uint32 seenReset = 0, seenTrimRequest = 0, seenExcludeRequest = 0;
+    juce::uint32 seenReset = 0, seenTrimRequest = 0, seenExcludeRequest = 0, seenFixRequest = 0;
+    mpm::FixChain fixChain;
+    juce::Array<std::atomic<float>*> fixParams;
+    void setParam (const juce::String& id, float value);
     std::atomic<juce::int64> lastProcessMs { 0 }, lastBypassMs { 0 };
     std::atomic<float>* analyseParam = nullptr;
     std::atomic<bool> localReset { false };
