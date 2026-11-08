@@ -30,7 +30,6 @@ jobs:
         shell: bash
         run: |
           for b in build/*_artefacts/Release/VST3/*.vst3 build/*_artefacts/Release/AU/*.component; do
-
             codesign --force --deep --sign - "$b"
           done
 
@@ -63,7 +62,6 @@ jobs:
         shell: bash
         run: |
           mkdir -p package
-
           cp -R "build/MayProMixTrack_artefacts/Release/VST3/May Pro Mix Track.vst3" package/
           cp -R "build/MayProMixMaster_artefacts/Release/VST3/May Pro Mix Master.vst3" package/
           if [ -d "build/MayProMixTrack_artefacts/Release/AU" ]; then

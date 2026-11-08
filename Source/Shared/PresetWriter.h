@@ -1,9 +1,9 @@
 #pragma once
 #include <juce_core/juce_core.h>
 #include "BinaryData.h"
-#include "FixChain.h"
+#include "FixModel.h"
 
-// Crea preset nativi di Fender Studio Pro (Pro EQ3 e Compressor) dai valori della correzione integrata.
+// Crea preset nativi di Fender Studio Pro (Pro EQ3 e Compressor) dai valori preparati da May Pro Mix.
 // Formato verificato su preset salvati da Studio Pro 8.2: archivio ZIP con metainfo.xml e data.dsppreset (JSON).
 namespace mpm::presets
 {
@@ -93,5 +93,21 @@ inline juce::String safeName (juce::String s)
 {
     s = s.removeCharacters ("\\/:*?\"<>|").trim();
     return s.isEmpty() ? juce::String ("Traccia") : s.substring (0, 48);
+}
+// scrive il preset del plug-in nativo (0 Pro EQ3, 1 Compressor) nella cartella temporanea; File{} se non c'e' nulla da esportare
+inline juce::File writeForTrack (const FixSettings& s, int kind, const juce::String& trackName)
+{
+    const auto name = safeName (trackName);
+    if (kind == 0 && s.hasEq())
+    {
+        const auto f = dragFolder().getChildFile (name + " - May Pro Mix EQ.preset");
+        return writeProEq (s, f, name + " May Pro Mix") ? f : juce::File();
+    }
+    if (kind == 1 && s.compOn)
+    {
+        const auto f = dragFolder().getChildFile (name + " - May Pro Mix Comp.preset");
+        return writeCompressor (s, f, name + " May Pro Mix") ? f : juce::File();
+    }
+    return {};
 }
 } // namespace mpm::presets

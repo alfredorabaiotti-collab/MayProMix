@@ -15,7 +15,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout TrackProcessor::createLayout
                                                         juce::NormalisableRange<float> (-24.0f, 24.0f, 0.1f), 0.0f,
                                                         juce::AudioParameterFloatAttributes().withLabel ("dB")));
 
-    // ---- correzione integrata
+    // ---- valori dei preset per i plug-in nativi (nessuna elaborazione audio)
     auto hz = [] (float v, int) { return v >= 1000.0f ? mpm::num (v / 1000.0f, v >= 10000.0f ? 1 : 2) + "k" : juce::String (juce::roundToInt (v)); };
     auto dB = [] (float v, int) { return mpm::num (v, 1, true); };
     auto ms = [] (float v, int) { return v < 10.0f ? mpm::num (v, 1) : juce::String (juce::roundToInt (v)); };
@@ -98,7 +98,6 @@ bool TrackProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void TrackProcessor::prepareToPlay (double sampleRate, int)
 {
     analyzer.prepare (sampleRate);
-    fixChain.prepare (sampleRate);
     gain.reset (sampleRate, 0.05);
     gain.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (trimParam->load()));
 }
@@ -122,10 +121,6 @@ void TrackProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiB
         if (sl >= 0 && sl < kMaxSlots && bus.bus().slots[sl].ownerId == ownerId)
             bus.bus().slots[sl].resetEpoch = bus.bus().slots[sl].resetEpoch + 1;
     }
-
-    // correzione integrata (prima dell'analisi: cosi' il plug-in verifica il risultato delle correzioni)
-    fixChain.setSettings (currentSettings());
-    fixChain.process (buffer.getArrayOfWritePointers(), numCh, n);
 
     // misura prima del trim: il trim viene sommato da chi legge, cosi' i cambi di trim valgono subito
     if (analyzer.process (buffer.getArrayOfReadPointers(), numCh, n))
@@ -159,7 +154,7 @@ FixSettings TrackProcessor::currentSettings() const noexcept
 {
     auto v = [this] (int i) { return fixParams[i]->load (std::memory_order_relaxed); };
     FixSettings s;
-    s.enabled = v (fsEnabled) > 0.5f;
+    s.enabled = true;
     s.hpfOn = v (fsHpfOn) > 0.5f; s.hpfFreq = v (fsHpfFreq); s.hpfSlope = v (fsHpfSlope) > 0.5f ? 24 : 12;
     for (int k = 0; k < 3; ++k)
     {
@@ -187,69 +182,32 @@ void TrackProcessor::applyFix (const FixAction& f)
 {
     JUCE_ASSERT_MESSAGE_THREAD
     if (! f.valid()) return;
-    const auto s = currentSettings();
-    setParam ("fix_on", 1.0f);
+    auto s = currentSettings();
+    applyFixTo (s, f);
+    setSettings (s);
+    requestReset();   // il preset e' stato inserito: nuova analisi per la verifica "Risolto / Ancora presente"
+}
 
-    switch (f.type)
+void TrackProcessor::setSettings (const FixSettings& s)
+{
+    setParam ("hpf_on", s.hpfOn ? 1.0f : 0.0f);
+    setParam ("hpf_freq", s.hpfFreq);
+    setParam ("hpf_slope", s.hpfSlope >= 24 ? 1.0f : 0.0f);
+    for (int k = 0; k < 3; ++k)
     {
-        case FixType::Hpf:
-            setParam ("hpf_on", 1.0f);
-            setParam ("hpf_freq", juce::jlimit (20.0f, 600.0f, f.freq));
-            setParam ("hpf_slope", f.slope >= 24 ? 1.0f : 0.0f);
-            break;
-
-        case FixType::Eq:
-        {
-            // stessa zona di una banda gia' attiva -> la aggiorno; altrimenti la prima libera; altrimenti la meno incisiva
-            int slotK = -1;
-            for (int k = 0; k < 3 && slotK < 0; ++k)
-                if (s.eqOn[k] && s.eqType[k] == f.shape && std::abs (std::log2 (juce::jmax (1.0f, s.eqFreq[k]) / juce::jmax (1.0f, f.freq))) < 0.6f)
-                    slotK = k;
-            const bool update = slotK >= 0;
-            for (int k = 0; k < 3 && slotK < 0; ++k) if (! s.eqOn[k]) slotK = k;
-            if (slotK < 0)
-            {
-                slotK = 0;
-                for (int k = 1; k < 3; ++k) if (std::abs (s.eqGain[k]) < std::abs (s.eqGain[slotK])) slotK = k;
-            }
-            const auto p = "eq" + juce::String (slotK + 1) + "_";
-            const float g = update ? s.eqGain[slotK] + f.gain : f.gain;
-            setParam (p + "on", 1.0f);
-            setParam (p + "type", (float) f.shape);
-            setParam (p + "freq", juce::jlimit (20.0f, 20000.0f, f.freq));
-            setParam (p + "gain", juce::jlimit (-15.0f, 15.0f, g));
-            setParam (p + "q", juce::jlimit (0.3f, 8.0f, f.q));
-            break;
-        }
-
-        case FixType::Comp:
-            setParam ("comp_on", 1.0f);
-            setParam ("comp_thr", juce::jlimit (-60.0f, 0.0f, f.thr));
-            setParam ("comp_ratio", juce::jlimit (1.0f, 20.0f, f.ratio));
-            setParam ("comp_att", juce::jlimit (0.5f, 200.0f, f.attack));
-            setParam ("comp_rel", juce::jlimit (10.0f, 2000.0f, f.release));
-            setParam ("comp_makeup", juce::jlimit (0.0f, 18.0f, f.makeup));
-            break;
-
-        case FixType::CompSoften:
-            if (s.compOn)
-            {
-                setParam ("comp_thr", juce::jmin (0.0f, s.compThr + 4.0f));
-                setParam ("comp_ratio", juce::jmax (1.5f, s.compRatio * 0.75f));
-                setParam ("comp_makeup", juce::jmax (0.0f, s.compMakeup - 2.0f));
-            }
-            break;
-
-        case FixType::DeEss:
-            setParam ("deess_on", 1.0f);
-            setParam ("deess_freq", juce::jlimit (3000.0f, 12000.0f, f.freq));
-            setParam ("deess_thr", juce::jlimit (-30.0f, 0.0f, f.thr));
-            setParam ("deess_range", juce::jlimit (0.0f, 12.0f, f.range));
-            break;
-
-        default: break;
+        const auto p = "eq" + juce::String (k + 1) + "_";
+        setParam (p + "on", s.eqOn[k] ? 1.0f : 0.0f);
+        setParam (p + "type", (float) s.eqType[k]);
+        setParam (p + "freq", s.eqFreq[k]);
+        setParam (p + "gain", s.eqGain[k]);
+        setParam (p + "q", s.eqQ[k]);
     }
-    requestReset();   // nuova analisi: cosi' la verifica "Risolto / Ancora presente" usa il suono corretto
+    setParam ("comp_on", s.compOn ? 1.0f : 0.0f);
+    setParam ("comp_thr", s.compThr);
+    setParam ("comp_ratio", s.compRatio);
+    setParam ("comp_att", s.compAtt);
+    setParam ("comp_rel", s.compRel);
+    setParam ("comp_makeup", s.compMakeup);
 }
 
 void TrackProcessor::processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&)
@@ -307,7 +265,7 @@ void TrackProcessor::timerCallback()
         seenExcludeRequest = eseq;
         setAnalyse (s.excludeRequestValue == 0);
     }
-    // stato della correzione integrata e richieste del Master
+    // valori dei preset e richieste del Master
     for (int i = 0; i < fsCount; ++i) s.fixState[i] = fixParams[i]->load();
     const auto fseq = s.fixRequestSeq;
     std::atomic_thread_fence (std::memory_order_acquire);

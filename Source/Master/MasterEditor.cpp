@@ -1,5 +1,7 @@
 #include "MasterEditor.h"
 #include "BinaryData.h"
+#include "../Shared/PresetWriter.h"
+#include <cstring>
 
 using namespace mpm;
 using namespace mpm::ui;
@@ -319,9 +321,19 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
         tick = 0;
         timerCallback();
     };
-    advice.onApplyFix = [this] (const Advice& a)
+    // anche dal Master si trascina il preset della traccia selezionata (valori letti dalla memoria condivisa)
+    advice.onMakePreset = [this] (const Advice& a)
     {
-        // il Master chiede alla traccia di impostare la propria correzione integrata
+        const int slot = rows.selectedSlot;
+        if (slot < 0 || slot >= kMaxSlots || ! a.fix.valid()) return juce::File();
+        const auto& sd = SharedBus::get().bus().slots[slot];
+        auto s = settingsFromState (sd.fixState);
+        applyFixTo (s, a.fix);
+        return presets::writeForTrack (s, presetKind (a.fix), juce::String::fromUTF8 (sd.name, (int) strnlen (sd.name, sizeof (sd.name))));
+    };
+    advice.onPresetDragged = [this] (const Advice& a)
+    {
+        // la traccia memorizza i nuovi valori e rifa' l'analisi
         const int slot = rows.selectedSlot;
         if (slot < 0 || slot >= kMaxSlots || ! a.fix.valid()) return;
         if (a.checkable()) SharedBus::get().setDone (slot, a.key, a.title, true);
@@ -618,7 +630,7 @@ void MasterEditor::timerCallback()
         {
             auto list = Advisor::forTrack (snap, idx);
             Advisor::applyDoneMarks (list, rows.selectedSlot, snap.tracks.getReference (idx).analysed());
-            advice.setAdvice (list, 1, true);   // Applica: livelli e correzione integrata della traccia selezionata
+            advice.setAdvice (list, 1, true);   // Applica livelli e preset da trascinare della traccia selezionata
         }
         else
         {

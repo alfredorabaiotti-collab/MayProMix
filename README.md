@@ -20,8 +20,7 @@ Formati: VST3 (Windows e Mac), AU (Mac).
 - 14 generi (rock, hard rock, pop, country, country rock, blues, folk, ballata, cantautorato, funk, jazz, elettronica, hip hop...) che cambiano livelli, timbro, compressione e consigli
 - Bilanciamento tonale del mix con punti cliccabili sulle discrepanze e scala regolabile
 - Consigli con colori di gravita', pulsante Applica per i livelli, Bilancia tutte nel Master e spunta Fatto con verifica e consiglio aggiuntivo
-- Correzione integrata nel Track (passa-alto, 3 bande EQ, compressore, de-esser) impostata con un clic da "Applica correzione"
-- Preset di Pro EQ3 e Compressor nativi generati dal pannello, da trascinare sulla traccia in Studio Pro
+- Nessuna elaborazione audio: sulle schede di EQ e compressione un pulsante da trascinare inserisce nella catena insert il Pro EQ3 o il Compressor nativo di Studio Pro gia' impostato (preset generato al momento)
 - Elenco delle tracce ordinate per problemi, riferimento personale, tutorial all'apertura
 
 ## Installazione rapida

@@ -500,14 +500,7 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
                  sibilant ? cat.suggest (Tool::DeEsser) : cat.suggest (Tool::EQ));
             auto& last = out.getReference (out.size() - 1);
             last.band = mv.band;
-            if (sibilant)
-            {
-                last.fix.type = FixType::DeEss;
-                last.fix.freq = 6500.0f;
-                last.fix.thr = -14.0f;
-                last.fix.range = juce::jlimit (3.0f, 8.0f, std::abs (mv.amount) + 2.0f);
-            }
-            else
+            if (! sibilant)   // sulle sibilanti serve un de-esser: nessun preset Pro EQ3
             {
                 last.fix.type = FixType::Eq;
                 last.fix.gain = mv.amount;
@@ -536,7 +529,7 @@ juce::Array<Advice> Advisor::forTrack (const Snapshot& s, int idx)
             add ("comp", gr >= 6.0f ? 2 : 1, catDyn, tr ("Comprimi: circa ", "Compress: about ") + num (gr) + tr (" dB di riduzione", " dB of gain reduction"),
                  detail, cat.suggest (Tool::Compressor));
             {
-                // soglia calcolata sul livello misurato (dopo la correzione, prima del trim)
+                // soglia calcolata sul livello misurato (dopo i plug-in in catena, prima del trim)
                 auto& last = out.getReference (out.size() - 1);
                 const float ratio = juce::jmax (1.5f, juce::String (prof.ratio).upToFirstOccurrenceOf (":", false, false).getFloatValue());
                 const float slope = 1.0f - 1.0f / ratio;

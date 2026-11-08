@@ -3,7 +3,7 @@
 #include "../Shared/Analyzer.h"
 #include "../Shared/SharedBus.h"
 #include "../Shared/Advisor.h"
-#include "FixChain.h"
+#include "../Shared/FixModel.h"
 
 class TrackProcessor : public juce::AudioProcessor, private juce::Timer
 {
@@ -45,10 +45,9 @@ public:
     void applyLevelDelta (float db);
     void setTrimTarget (float db);
     void setAnalyse (bool on);
-    void applyFix (const mpm::FixAction& f);           // imposta la correzione integrata (thread dei messaggi)
+    void applyFix (const mpm::FixAction& f);           // aggiunge una correzione ai valori dei preset (thread dei messaggi)
+    void setSettings (const mpm::FixSettings& s);
     mpm::FixSettings currentSettings() const noexcept;
-    float getCompGr() const noexcept  { return fixChain.grComp.load(); }
-    float getDeessGr() const noexcept { return fixChain.grDeess.load(); }
     static const juce::StringArray& fixParamIds();
 
 private:
@@ -62,7 +61,6 @@ private:
     juce::uint32 ownerId;
     std::atomic<int> slot { -1 };
     juce::uint32 seenReset = 0, seenTrimRequest = 0, seenExcludeRequest = 0, seenFixRequest = 0;
-    mpm::FixChain fixChain;
     juce::Array<std::atomic<float>*> fixParams;
     void setParam (const juce::String& id, float value);
     std::atomic<juce::int64> lastProcessMs { 0 }, lastBypassMs { 0 };

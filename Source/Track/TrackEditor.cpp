@@ -35,8 +35,15 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     advice.onApplyLevel = [this] (float target) { proc.setTrimTarget (target); };
     spectrum.onGoToAdvice = [this] (int band) { advice.focusBand (band); };
     addAndMakeVisible (fixPanel);
-    // "Applica correzione": imposta la correzione integrata, segna Fatto e fa ripartire l'analisi
-    advice.onApplyFix = [this] (const Advice& a)
+    // pulsante "Trascina Pro EQ3 / Compressor" sulla scheda: il preset contiene i valori gia' preparati + questa correzione
+    advice.onMakePreset = [this] (const Advice& a)
+    {
+        auto s = proc.currentSettings();
+        applyFixTo (s, a.fix);
+        return presets::writeForTrack (s, presetKind (a.fix), proc.getTrackName());
+    };
+    // trascinamento concluso: il plug-in e' nella catena -> valori memorizzati, Fatto, nuova analisi
+    advice.onPresetDragged = [this] (const Advice& a)
     {
         if (proc.getSlot() >= 0 && a.checkable())
             SharedBus::get().setDone (proc.getSlot(), a.key, a.title, true);

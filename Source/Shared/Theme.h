@@ -1,6 +1,6 @@
 #pragma once
 #include <juce_gui_extra/juce_gui_extra.h>
-#include "Advisor.h"
+#include "FixModel.h"
 
 // Aspetto grafico di May Pro Mix: pannelli ardesia, accento verde acqua
 namespace mpm::ui
@@ -497,13 +497,73 @@ private:
 };
 
 //==============================================================================
+// Pulsante da trascinare nella catena insert di Studio Pro: crea il preset nativo al momento del trascinamento.
+// Clic semplice: crea il file e lo mostra nella cartella (da li' si puo' trascinare comunque).
+class DragPresetButton : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    std::function<juce::File()> makeFile;   // scrive il preset e lo restituisce; File{} = nulla da esportare
+    std::function<void()> onDragged;        // chiamato a trascinamento concluso
+    juce::String label;
+
+    void paint (juce::Graphics& g) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        const bool on = isEnabled();
+        g.setColour (on ? C::teal.withAlpha (over ? 0.30f : 0.18f) : C::panel2);
+        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+        g.setColour (on ? C::teal : C::line);
+        g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.2f);
+        // icona: maniglia di trascinamento (sei punti)
+        auto ic = r.removeFromLeft (r.getHeight()).reduced (r.getHeight() * 0.3f);
+        g.setColour (on ? C::teal : C::dim);
+        for (int i = 0; i < 2; ++i)
+            for (int j = 0; j < 3; ++j)
+                g.fillEllipse (ic.getX() + i * ic.getWidth() * 0.6f, ic.getY() + j * ic.getHeight() * 0.42f, 2.6f, 2.6f);
+        g.setColour (on ? C::text : C::dim);
+        g.setFont (font (12.0f, true));
+        g.drawFittedText (label, r.withTrimmedRight (10).toNearestInt(), juce::Justification::centredLeft, 1, 0.85f);
+    }
+
+    void mouseEnter (const juce::MouseEvent&) override { over = true; setMouseCursor (juce::MouseCursor::DraggingHandCursor); repaint(); }
+    void mouseExit (const juce::MouseEvent&) override  { over = false; repaint(); }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (dragging || e.getDistanceFromDragStart() < 6 || ! makeFile) return;
+        const auto f = makeFile();
+        if (! f.existsAsFile()) return;
+        dragging = true;
+        juce::DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
+            [safe = juce::Component::SafePointer<DragPresetButton> (this)]
+            {
+                if (safe == nullptr) return;
+                safe->dragging = false;
+                if (auto cb = safe->onDragged)
+                    juce::MessageManager::callAsync (cb);   // mai dentro la callback del trascinamento
+            });
+    }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (dragging || e.getDistanceFromDragStart() >= 6 || ! makeFile) return;
+        const auto f = makeFile();
+        if (f.existsAsFile()) f.revealToUser();
+    }
+
+private:
+    bool over = false, dragging = false;
+};
+
+//==============================================================================
 // Lista dei consigli a schede
 class AdviceList : public juce::Component
 {
 public:
     std::function<void (float)> onApplyLevel;                   // riceve il valore ASSOLUTO del trim
     std::function<void (const Advice&, bool)> onDoneChanged;
-    std::function<void (const Advice&)> onApplyFix;             // imposta la correzione integrata
+    std::function<juce::File (const Advice&)> onMakePreset;     // scrive il preset nativo con la correzione del consiglio
+    std::function<void (const Advice&)> onPresetDragged;        // preset trascinato nella catena: segna Fatto e riparte l'analisi
 
     AdviceList()
     {
@@ -550,6 +610,7 @@ private:
     {
         Advice a;
         juce::TextButton applyBtn;
+        DragPresetButton presetBtn;
         juce::ToggleButton doneBtn;
         juce::TextLayout layout;
         float textH = 0;
@@ -563,7 +624,7 @@ private:
         }
 
         void build (int width, bool allowApply, std::function<void (float)> cb, std::function<void (const Advice&, bool)> doneCb,
-                    std::function<void (const Advice&)> fixCb)
+                    std::function<juce::File (const Advice&)> makeCb, std::function<void (const Advice&)> draggedCb)
         {
             juce::String tag = a.category.toUpperCase();
             if (a.status == 1) tag << "  |  " << tr ("FATTO, DA VERIFICARE", "DONE, TO VERIFY");
@@ -581,17 +642,21 @@ private:
             textH = layout.getHeight();
 
             const bool levelApply = allowApply && std::isfinite (a.levelDelta) && std::isfinite (a.levelTarget);
-            const bool fixApply = allowApply && a.fix.valid() && a.status != 3 && fixCb != nullptr;
+            const int kind = presetKind (a.fix);
+            const bool fixApply = allowApply && kind >= 0 && a.status != 3 && makeCb != nullptr;
             const bool showApply = levelApply || fixApply;
-            applyBtn.setVisible (showApply);
+            applyBtn.setVisible (levelApply);
+            presetBtn.setVisible (fixApply && ! levelApply);
             if (fixApply && ! levelApply)
             {
-                applyBtn.setButtonText (a.status == 2 ? tr ("Applica di nuovo", "Apply again") : tr ("Applica correzione", "Apply fix"));
-                applyBtn.setTooltip (tr ("Imposta la correzione integrata di May Pro Mix Track e rifa' l'analisi", "Sets the May Pro Mix Track built-in fix and re-analyses"));
-                applyBtn.setToggleState (true, juce::dontSendNotification);
+                const auto name = kind == 0 ? juce::String ("Pro EQ3") : juce::String ("Compressor");
+                presetBtn.label = (a.status == 2 ? tr ("Trascina di nuovo ", "Drag again: ") : tr ("Trascina ", "Drag ")) + name;
+                presetBtn.setTooltip (tr ("Trascina nella catena insert della traccia in Studio Pro, sopra May Pro Mix Track (se il plug-in c'e' gia', rilascialo sopra di lui per aggiornarlo). Clic: mostra il file del preset.",
+                                          "Drag into the track insert chain in Studio Pro, above May Pro Mix Track (if the plug-in is already there, drop onto it to update it). Click: show the preset file."));
                 const Advice copy = a;
-                applyBtn.onClick = [fixCb, copy] { if (fixCb) fixCb (copy); };
-                addAndMakeVisible (applyBtn);
+                presetBtn.makeFile = [makeCb, copy] { return makeCb ? makeCb (copy) : juce::File(); };
+                presetBtn.onDragged = [draggedCb, copy] { if (draggedCb) draggedCb (copy); };
+                addAndMakeVisible (presetBtn);
             }
             else if (levelApply)
             {
@@ -614,6 +679,7 @@ private:
             const int extra = (showApply || showDone) ? 38 : 0;
             setSize (width, (int) std::ceil (textH) + 22 + extra);
             applyBtn.setBounds (14, (int) textH + 18, 190, 28);
+            presetBtn.setBounds (14, (int) textH + 18, 210, 28);
             doneBtn.setBounds (width - 96, (int) textH + 18, 86, 28);
         }
 
@@ -643,7 +709,7 @@ private:
         {
             auto* card = cards.add (new Card());
             card->a = a;
-            card->build (colW, apply, onApplyLevel, onDoneChanged, onApplyFix);
+            card->build (colW, apply, onApplyLevel, onDoneChanged, onMakePreset, onPresetDragged);
             card->highlighted = highlightBand >= 0 && a.band == highlightBand;
             int c = 0;
             for (int k = 1; k < cols; ++k) if (colY[k] < colY[c]) c = k;

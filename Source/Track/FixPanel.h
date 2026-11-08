@@ -1,9 +1,9 @@
 #pragma once
 #include "TrackProcessor.h"
-#include "PresetWriter.h"
+#include "../Shared/PresetWriter.h"
 #include "../Shared/Theme.h"
 
-// Pannello della correzione integrata di May Pro Mix Track + etichette per trascinare i preset nativi
+// Pannello dei valori dei preset nativi (Pro EQ3 e Compressor) + pulsanti da trascinare nella catena insert
 namespace mpm::ui
 {
 using APVTS = juce::AudioProcessorValueTreeState;
@@ -128,60 +128,6 @@ private:
     juce::Rectangle<int> titleArea;
 };
 
-// Etichetta da trascinare sulla traccia di Studio Pro: crea il preset al momento del trascinamento
-class PresetChip : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    std::function<bool (const juce::File&)> writer;   // scrive il preset; false = nulla da esportare
-    std::function<juce::String()> fileName;
-    juce::String label;
-
-    void paint (juce::Graphics& g) override
-    {
-        auto r = getLocalBounds().toFloat().reduced (0.5f);
-        g.setColour (isEnabled() ? C::teal.withAlpha (over ? 0.28f : 0.16f) : C::panel2);
-        g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
-        g.setColour (isEnabled() ? C::teal : C::line);
-        g.drawRoundedRectangle (r, r.getHeight() * 0.5f, 1.0f);
-        // icona: freccia verso il basso
-        auto ic = r.removeFromLeft (r.getHeight()).reduced (7);
-        juce::Path p;
-        p.startNewSubPath (ic.getCentreX(), ic.getY()); p.lineTo (ic.getCentreX(), ic.getBottom() - 2);
-        p.startNewSubPath (ic.getX() + 2, ic.getCentreY() + 1); p.lineTo (ic.getCentreX(), ic.getBottom() - 2); p.lineTo (ic.getRight() - 2, ic.getCentreY() + 1);
-        g.setColour (isEnabled() ? C::teal : C::dim);
-        g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (isEnabled() ? C::text : C::dim);
-        g.setFont (font (12.0f, true));
-        g.drawText (label, r.withTrimmedRight (10), juce::Justification::centredLeft, true);
-    }
-
-    void mouseEnter (const juce::MouseEvent&) override { over = true; repaint(); }
-    void mouseExit (const juce::MouseEvent&) override  { over = false; repaint(); }
-
-    void mouseDrag (const juce::MouseEvent& e) override
-    {
-        if (dragging || e.getDistanceFromDragStart() < 6 || ! writer) return;
-        const auto f = presets::dragFolder().getChildFile (fileName ? fileName() : juce::String ("May Pro Mix.preset"));
-        if (! writer (f)) return;
-        dragging = true;
-        juce::DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
-                                                                   [safe = juce::Component::SafePointer<PresetChip> (this)]
-                                                                   { if (safe != nullptr) safe->dragging = false; });
-    }
-
-    void mouseUp (const juce::MouseEvent& e) override
-    {
-        dragging = false;
-        if (e.getDistanceFromDragStart() >= 6 || ! writer) return;
-        // clic semplice: crea il file e lo mostra nella cartella, da cui si puo' trascinare
-        const auto f = presets::dragFolder().getChildFile (fileName ? fileName() : juce::String ("May Pro Mix.preset"));
-        if (writer (f)) f.revealToUser();
-    }
-
-private:
-    bool over = false, dragging = false;
-};
-
 class FixPanel : public juce::Component, private juce::Timer
 {
 public:
@@ -191,24 +137,12 @@ public:
           eq1 (p.apvts, "eq1_on", "eq1_type", { "eq1_freq", "eq1_gain", "eq1_q" }),
           eq2 (p.apvts, "eq2_on", "eq2_type", { "eq2_freq", "eq2_gain", "eq2_q" }),
           eq3 (p.apvts, "eq3_on", "eq3_type", { "eq3_freq", "eq3_gain", "eq3_q" }),
-          comp (p.apvts, "comp_on", {}, { "comp_thr", "comp_ratio", "comp_att", "comp_rel", "comp_makeup" }, [&p] { return p.getCompGr(); }),
-          deess (p.apvts, "deess_on", {}, { "deess_freq", "deess_thr", "deess_range" }, [&p] { return p.getDeessGr(); })
+          comp (p.apvts, "comp_on", {}, { "comp_thr", "comp_ratio", "comp_att", "comp_rel", "comp_makeup" })
     {
-        for (auto* m : { &hpf, &eq1, &eq2, &eq3, &comp, &deess }) addAndMakeVisible (m);
-        masterBtn.setClickingTogglesState (true);
-        addAndMakeVisible (masterBtn);
-        masterAttach = std::make_unique<APVTS::ButtonAttachment> (p.apvts, "fix_on", masterBtn);
-
-        eqChip.label = "Pro EQ3";
-        eqChip.fileName = [this] { return presets::safeName (proc.getTrackName()) + " - May Pro Mix EQ.preset"; };
-        eqChip.writer = [this] (const juce::File& f) { return presets::writeProEq (proc.currentSettings(), f, presets::safeName (proc.getTrackName()) + " May Pro Mix"); };
-        compChip.label = "Compressor";
-        compChip.fileName = [this] { return presets::safeName (proc.getTrackName()) + " - May Pro Mix Comp.preset"; };
-        compChip.writer = [this] (const juce::File& f)
-        {
-            const auto s = proc.currentSettings();
-            return s.enabled && s.compOn && presets::writeCompressor (s, f, presets::safeName (proc.getTrackName()) + " May Pro Mix");
-        };
+        for (auto* m : { &hpf, &eq1, &eq2, &eq3, &comp }) addAndMakeVisible (m);
+        eqChip.makeFile = [this] { return presets::writeForTrack (proc.currentSettings(), 0, proc.getTrackName()); };
+        compChip.makeFile = [this] { return presets::writeForTrack (proc.currentSettings(), 1, proc.getTrackName()); };
+        eqChip.onDragged = compChip.onDragged = [this] { proc.requestReset(); };
         addAndMakeVisible (eqChip);
         addAndMakeVisible (compChip);
         refreshTexts();
@@ -217,16 +151,16 @@ public:
 
     void refreshTexts()
     {
-        masterBtn.setButtonText (tr ("Correzione ON", "Fix ON"));
+        eqChip.label = tr ("Trascina Pro EQ3", "Drag Pro EQ3");
+        compChip.label = tr ("Trascina Compressor", "Drag Compressor");
         hpf.setTexts (tr ("Passa-alto", "High-pass"), { "Hz" }, { "12 dB", "24 dB" });
         const juce::StringArray types { tr ("Campana", "Bell"), tr ("Shelf bassi", "Low shelf"), tr ("Shelf alti", "High shelf") };
         eq1.setTexts ("EQ 1", { "Hz", "dB", "Q" }, types);
         eq2.setTexts ("EQ 2", { "Hz", "dB", "Q" }, types);
         eq3.setTexts ("EQ 3", { "Hz", "dB", "Q" }, types);
         comp.setTexts (tr ("Compressore", "Compressor"), { tr ("Soglia", "Thresh"), "Ratio", tr ("Attacco", "Attack"), tr ("Rilascio", "Release"), "Gain" });
-        deess.setTexts ("De-esser", { "Hz", tr ("Soglia", "Thresh"), tr ("Max dB", "Range") });
-        const auto tip = tr ("Trascina sulla traccia di Studio Pro per avere gli stessi valori nel plug-in nativo (poi spegni la correzione integrata). Clic: mostra il file.",
-                             "Drag onto the Studio Pro track to get the same values in the native plug-in (then switch off the built-in fix). Click: show the file.");
+        const auto tip = tr ("Trascina nella catena insert della traccia in Studio Pro, sopra May Pro Mix Track: il plug-in nativo arriva con questi valori. Se c'e' gia', rilascialo sopra di lui per aggiornarlo. Clic: mostra il file.",
+                             "Drag into the track insert chain in Studio Pro, above May Pro Mix Track: the native plug-in arrives with these values. If it is already there, drop onto it to update it. Click: show the file.");
         eqChip.setTooltip (tip);
         compChip.setTooltip (tip);
         repaint();
@@ -236,13 +170,11 @@ public:
     {
         auto r = getLocalBounds().reduced (12, 8);
         auto head = r.removeFromTop (26);
-        masterBtn.setBounds (head.removeFromRight (120));
-        head.removeFromRight (10);
-        compChip.setBounds (head.removeFromRight (124));
-        head.removeFromRight (6);
-        eqChip.setBounds (head.removeFromRight (104));
+        compChip.setBounds (head.removeFromRight (176));
         head.removeFromRight (8);
-        chipsLabel = head.removeFromRight (150);
+        eqChip.setBounds (head.removeFromRight (160));
+        head.removeFromRight (8);
+        chipsLabel = head.removeFromRight (260);
         r.removeFromTop (8);
         auto row1 = r.removeFromTop (r.getHeight() / 2 - 3);
         r.removeFromTop (6);
@@ -254,35 +186,28 @@ public:
         eq1.setBounds (row1.removeFromLeft (we)); row1.removeFromLeft (gap);
         eq2.setBounds (row1.removeFromLeft (we)); row1.removeFromLeft (gap);
         eq3.setBounds (row1);
-        comp.setBounds (row2.removeFromLeft (row2.getWidth() * 62 / 100)); row2.removeFromLeft (gap);
-        deess.setBounds (row2);
+        comp.setBounds (row2);
     }
 
     void paint (juce::Graphics& g) override
     {
-        drawPanel (g, getLocalBounds(), tr ("Correzione integrata", "Built-in fix"));
+        drawPanel (g, getLocalBounds(), tr ("Preset per i plug-in nativi", "Native plug-in presets"));
         g.setColour (C::dim);
         g.setFont (font (11.0f));
-        g.drawText (tr ("Preset nativi da trascinare:", "Native presets to drag:"), chipsLabel, juce::Justification::centredRight, true);
+        g.drawText (tr ("Trascina nella catena insert, sopra May Pro Mix:", "Drag into the insert chain, above May Pro Mix:"), chipsLabel, juce::Justification::centredRight, true);
     }
 
 private:
     void timerCallback() override
     {
-        comp.repaint();
-        deess.repaint();
         const auto s = proc.currentSettings();
-        bool anyEq = s.enabled && s.hpfOn;
-        for (int k = 0; k < 3; ++k) anyEq = anyEq || (s.enabled && s.eqOn[k] && std::abs (s.eqGain[k]) > 0.05f);
-        eqChip.setEnabled (anyEq);
-        compChip.setEnabled (s.enabled && s.compOn);
+        eqChip.setEnabled (s.hasEq());
+        compChip.setEnabled (s.compOn);
     }
 
     TrackProcessor& proc;
-    ModuleBox hpf, eq1, eq2, eq3, comp, deess;
-    juce::TextButton masterBtn;
-    std::unique_ptr<APVTS::ButtonAttachment> masterAttach;
-    PresetChip eqChip, compChip;
+    ModuleBox hpf, eq1, eq2, eq3, comp;
+    DragPresetButton eqChip, compChip;
     juce::Rectangle<int> chipsLabel;
 };
 } // namespace mpm::ui
