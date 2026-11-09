@@ -45,7 +45,7 @@ public:
     void applyLevelDelta (float db);
     void setTrimTarget (float db);
     void setAnalyse (bool on);
-    void applyFix (const mpm::FixAction& f);           // aggiunge una correzione ai valori dei preset (thread dei messaggi)
+    void applyFixes (const juce::Array<mpm::FixAction>& fixes);   // aggiunge le correzioni ai valori dei preset (thread dei messaggi)
     void setSettings (const mpm::FixSettings& s);
     mpm::FixSettings currentSettings() const noexcept;
     static const juce::StringArray& fixParamIds();

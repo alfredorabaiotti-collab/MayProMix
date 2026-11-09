@@ -624,7 +624,7 @@ private:
         }
 
         void build (int width, bool allowApply, std::function<void (float)> cb, std::function<void (const Advice&, bool)> doneCb,
-                    std::function<juce::File (const Advice&)> makeCb, std::function<void (const Advice&)> draggedCb)
+                    std::function<juce::File (const Advice&)> makeCb, std::function<void (const Advice&)> draggedCb, int bundle = 1)
         {
             juce::String tag = a.category.toUpperCase();
             if (a.status == 1) tag << "  |  " << tr ("FATTO, DA VERIFICARE", "DONE, TO VERIFY");
@@ -650,7 +650,8 @@ private:
             if (fixApply && ! levelApply)
             {
                 const auto name = kind == 0 ? juce::String ("Pro EQ3") : juce::String ("Compressor");
-                presetBtn.label = (a.status == 2 ? tr ("Trascina di nuovo ", "Drag again: ") : tr ("Trascina ", "Drag ")) + name;
+                presetBtn.label = (a.status == 2 && bundle <= 1 ? tr ("Trascina di nuovo ", "Drag again: ") : tr ("Trascina ", "Drag ")) + name
+                                  + (bundle > 1 ? tr (" (tutte le ", " (all ") + juce::String (bundle) + ")" : juce::String());
                 presetBtn.setTooltip (tr ("Trascina nella catena insert della traccia in Studio Pro, sopra May Pro Mix Track (se il plug-in c'e' gia', rilascialo sopra di lui per aggiornarlo). Clic: mostra il file del preset.",
                                           "Drag into the track insert chain in Studio Pro, above May Pro Mix Track (if the plug-in is already there, drop onto it to update it). Click: show the preset file."));
                 const Advice copy = a;
@@ -709,7 +710,8 @@ private:
         {
             auto* card = cards.add (new Card());
             card->a = a;
-            card->build (colW, apply, onApplyLevel, onDoneChanged, onMakePreset, onPresetDragged);
+            card->build (colW, apply, onApplyLevel, onDoneChanged, onMakePreset, onPresetDragged,
+                         juce::jmax (1, pendingFor (items, presetKind (a.fix)).size()));
             card->highlighted = highlightBand >= 0 && a.band == highlightBand;
             int c = 0;
             for (int k = 1; k < cols; ++k) if (colY[k] < colY[c]) c = k;
@@ -726,6 +728,9 @@ private:
     juce::Component content;
     juce::OwnedArray<Card> cards;
     juce::Array<Advice> items;
+public:
+    const juce::Array<Advice>& getItems() const noexcept { return items; }
+private:
     juce::String lastSig;
     int cols = 1, highlightBand = -1;
     bool apply = false;

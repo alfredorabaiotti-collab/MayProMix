@@ -44,15 +44,12 @@ inline bool writeProEq (const FixSettings& s, const juce::File& target, const ju
 
     struct Bell { float f, g, q; };
     juce::Array<Bell> bells;
-    bool lfOn = false, hfOn = false;
-    float lfF = 110, lfG = 0, hfF = 11000, hfG = 0;
-    for (int k = 0; k < 3; ++k)
-    {
-        if (! s.enabled || ! s.eqOn[k] || std::abs (s.eqGain[k]) < 0.05f) continue;
-        if (s.eqType[k] == 1) { lfOn = true; lfF = s.eqFreq[k]; lfG = s.eqGain[k]; }
-        else if (s.eqType[k] == 2) { hfOn = true; hfF = s.eqFreq[k]; hfG = s.eqGain[k]; }
-        else bells.add ({ s.eqFreq[k], s.eqGain[k], s.eqQ[k] });
-    }
+    auto active = [&s] (int k) { return s.enabled && s.eqOn[k] && std::abs (s.eqGain[k]) >= 0.05f; };
+    const bool lfOn = active (0), hfOn = active (kEqBands - 1);
+    const float lfF = lfOn ? s.eqFreq[0] : 110.0f, lfG = lfOn ? s.eqGain[0] : 0.0f;
+    const float hfF = hfOn ? s.eqFreq[kEqBands - 1] : 11000.0f, hfG = hfOn ? s.eqGain[kEqBands - 1] : 0.0f;
+    for (int k = 1; k <= 3; ++k)
+        if (active (k)) bells.add ({ s.eqFreq[k], s.eqGain[k], s.eqQ[k] });
     std::sort (bells.begin(), bells.end(), [] (const Bell& a, const Bell& b) { return a.f < b.f; });
     const float defF[3] { 500.0f, 2000.0f, 5000.0f };
     for (int i = 0; i < 3; ++i)

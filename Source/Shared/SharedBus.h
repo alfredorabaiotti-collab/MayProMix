@@ -21,8 +21,8 @@ constexpr int kMaxDone = 12;
 enum FixStateIndex
 {
     fsEnabled = 0, fsHpfOn, fsHpfFreq, fsHpfSlope,
-    fsEq0On, fsEq0Type, fsEq0Freq, fsEq0Gain, fsEq0Q,       // banda k: fsEq0On + k * 5
-    fsCompOn = fsEq0On + 15, fsCompThr, fsCompRatio, fsCompAtt, fsCompRel, fsCompMakeup,
+    fsEq0On, fsEq0Freq, fsEq0Gain, fsEq0Q,                  // banda k (0 LF shelf, 1-3 campane, 4 HF shelf): fsEq0On + k * 4
+    fsCompOn = fsEq0On + 20, fsCompThr, fsCompRatio, fsCompAtt, fsCompRel, fsCompMakeup,
     fsDeessOn, fsDeessFreq, fsDeessThr, fsDeessRange, fsCount
 };
 
@@ -47,9 +47,9 @@ struct SlotData
     float trimRequestDb;
     juce::int32 excluded;          // 1 = esclusa dall'analisi (interruttore o plug-in in bypass)
     // correzione integrata: stato attuale (scritto dalla traccia) e richieste di modifica (dal Master)
-    float fixState[32];
+    float fixState[40];
     juce::uint32 fixRequestSeq;
-    float fixRequest[16];
+    float fixRequest[40];      // dal Master: tutti i valori dei preset (stesso ordine di fixState)
     juce::uint32 excludeRequestSeq;
     juce::int32 excludeRequestValue;
     DoneMark done[kMaxDone];
@@ -79,6 +79,7 @@ struct BusLayout
     HeaderData header;
     SlotData slots[kMaxSlots];
 };
+static_assert (fsCount <= 40, "fixState troppo piccolo");
 static_assert (std::is_trivially_copyable<BusLayout>::value, "BusLayout deve restare POD");
 
 class SharedBus

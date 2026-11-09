@@ -14,6 +14,9 @@ public:
     void resized() override;
 
 private:
+    juce::Array<mpm::Advice> bundleFor (int kind, const mpm::Advice* extra) const;
+    void commitBundle (int kind, const mpm::Advice* extra);
+
     void timerCallback() override;
     void refreshTexts();
 

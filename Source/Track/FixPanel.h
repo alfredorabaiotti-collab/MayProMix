@@ -69,7 +69,7 @@ public:
         if (gr) r.removeFromRight (12);
         if (comboInBody)
         {
-            auto side = r.removeFromRight (r.getWidth() / 2);
+            auto side = r.removeFromRight (r.getWidth() * 3 / 5);
             combo->setBounds (side.withSizeKeepingCentre (juce::jmin (side.getWidth() - 4, 84), 24).translated (0, -7));
         }
         const int n = knobs.size();
@@ -134,33 +134,40 @@ public:
     explicit FixPanel (TrackProcessor& p)
         : proc (p),
           hpf (p.apvts, "hpf_on", "hpf_slope", { "hpf_freq" }),
-          eq1 (p.apvts, "eq1_on", "eq1_type", { "eq1_freq", "eq1_gain", "eq1_q" }),
-          eq2 (p.apvts, "eq2_on", "eq2_type", { "eq2_freq", "eq2_gain", "eq2_q" }),
-          eq3 (p.apvts, "eq3_on", "eq3_type", { "eq3_freq", "eq3_gain", "eq3_q" }),
+          eq1 (p.apvts, "eq1_on", {}, { "eq1_freq", "eq1_gain" }),
+          eq2 (p.apvts, "eq2_on", {}, { "eq2_freq", "eq2_gain", "eq2_q" }),
+          eq3 (p.apvts, "eq3_on", {}, { "eq3_freq", "eq3_gain", "eq3_q" }),
+          eq4 (p.apvts, "eq4_on", {}, { "eq4_freq", "eq4_gain", "eq4_q" }),
+          eq5 (p.apvts, "eq5_on", {}, { "eq5_freq", "eq5_gain" }),
           comp (p.apvts, "comp_on", {}, { "comp_thr", "comp_ratio", "comp_att", "comp_rel", "comp_makeup" })
     {
-        for (auto* m : { &hpf, &eq1, &eq2, &eq3, &comp }) addAndMakeVisible (m);
-        eqChip.makeFile = [this] { return presets::writeForTrack (proc.currentSettings(), 0, proc.getTrackName()); };
-        compChip.makeFile = [this] { return presets::writeForTrack (proc.currentSettings(), 1, proc.getTrackName()); };
-        eqChip.onDragged = compChip.onDragged = [this] { proc.requestReset(); };
+        for (auto* m : { &hpf, &eq1, &eq2, &eq3, &eq4, &eq5, &comp }) addAndMakeVisible (m);
+        // un solo trascinamento porta i valori del pannello + tutte le correzioni suggerite ancora da inserire
+        eqChip.makeFile = [this] { return presets::writeForTrack (withPending (proc.currentSettings(), pendingList (0)), 0, proc.getTrackName()); };
+        compChip.makeFile = [this] { return presets::writeForTrack (withPending (proc.currentSettings(), pendingList (1)), 1, proc.getTrackName()); };
+        eqChip.onDragged = [this] { if (onCommitted) onCommitted (0); else proc.requestReset(); };
+        compChip.onDragged = [this] { if (onCommitted) onCommitted (1); else proc.requestReset(); };
         addAndMakeVisible (eqChip);
         addAndMakeVisible (compChip);
         refreshTexts();
         startTimerHz (12);
     }
 
+    std::function<juce::Array<Advice> (int)> pending;   // correzioni suggerite ancora da inserire (0 EQ, 1 Comp)
+    std::function<void (int)> onCommitted;              // preset trascinato: memorizza i valori e segna Fatto
+
     void refreshTexts()
     {
-        eqChip.label = tr ("Trascina Pro EQ3", "Drag Pro EQ3");
-        compChip.label = tr ("Trascina Compressor", "Drag Compressor");
-        hpf.setTexts (tr ("Passa-alto", "High-pass"), { "Hz" }, { "12 dB", "24 dB" });
-        const juce::StringArray types { tr ("Campana", "Bell"), tr ("Shelf bassi", "Low shelf"), tr ("Shelf alti", "High shelf") };
-        eq1.setTexts ("EQ 1", { "Hz", "dB", "Q" }, types);
-        eq2.setTexts ("EQ 2", { "Hz", "dB", "Q" }, types);
-        eq3.setTexts ("EQ 3", { "Hz", "dB", "Q" }, types);
+        updateChips();
+        hpf.setTexts ("Low Cut", { "Hz" }, { "12 dB", "24 dB" });
+        eq1.setTexts ("LF", { "Hz", "dB" });
+        eq2.setTexts ("LMF", { "Hz", "dB", "Q" });
+        eq3.setTexts ("MF", { "Hz", "dB", "Q" });
+        eq4.setTexts ("HMF", { "Hz", "dB", "Q" });
+        eq5.setTexts ("HF", { "Hz", "dB" });
         comp.setTexts (tr ("Compressore", "Compressor"), { tr ("Soglia", "Thresh"), "Ratio", tr ("Attacco", "Attack"), tr ("Rilascio", "Release"), "Gain" });
-        const auto tip = tr ("Trascina nella catena insert della traccia in Studio Pro, sopra May Pro Mix Track: il plug-in nativo arriva con questi valori. Se c'e' gia', rilascialo sopra di lui per aggiornarlo. Clic: mostra il file.",
-                             "Drag into the track insert chain in Studio Pro, above May Pro Mix Track: the native plug-in arrives with these values. If it is already there, drop onto it to update it. Click: show the file.");
+        const auto tip = tr ("Un solo trascinamento porta questi valori piu' tutte le correzioni suggerite ancora da inserire. Rilascialo nella catena insert della traccia in Studio Pro, sopra May Pro Mix Track (o sopra il plug-in gia' presente per aggiornarlo). Clic: mostra il file.",
+                             "One drag carries these values plus every suggested fix not yet inserted. Drop it into the track insert chain in Studio Pro, above May Pro Mix Track (or onto the existing plug-in to update it). Click: show the file.");
         eqChip.setTooltip (tip);
         compChip.setTooltip (tip);
         repaint();
@@ -170,22 +177,25 @@ public:
     {
         auto r = getLocalBounds().reduced (12, 8);
         auto head = r.removeFromTop (26);
-        compChip.setBounds (head.removeFromRight (176));
+        compChip.setBounds (head.removeFromRight (210));
         head.removeFromRight (8);
-        eqChip.setBounds (head.removeFromRight (160));
+        eqChip.setBounds (head.removeFromRight (196));
         head.removeFromRight (8);
-        chipsLabel = head.removeFromRight (260);
+        chipsLabel = head.removeFromRight (juce::jmax (0, head.getWidth() - 200));
         r.removeFromTop (8);
         auto row1 = r.removeFromTop (r.getHeight() / 2 - 3);
         r.removeFromTop (6);
         auto row2 = r;
         const int gap = 8;
-        const int w1 = (row1.getWidth() - 3 * gap);
-        hpf.setBounds (row1.removeFromLeft (w1 * 22 / 100)); row1.removeFromLeft (gap);
-        const int we = (row1.getWidth() - 2 * gap) / 3;
-        eq1.setBounds (row1.removeFromLeft (we)); row1.removeFromLeft (gap);
-        eq2.setBounds (row1.removeFromLeft (we)); row1.removeFromLeft (gap);
-        eq3.setBounds (row1);
+        // larghezze in proporzione al numero di manopole (il passa-alto ha anche il menu della pendenza)
+        const int weights[] { 3, 2, 3, 3, 3, 2 };
+        ModuleBox* mods[] { &hpf, &eq1, &eq2, &eq3, &eq4, &eq5 };
+        const int avail = row1.getWidth() - 5 * gap;
+        for (int i = 0; i < 6; ++i)
+        {
+            mods[i]->setBounds (i == 5 ? row1 : row1.removeFromLeft (avail * weights[i] / 16));
+            if (i < 5) row1.removeFromLeft (gap);
+        }
         comp.setBounds (row2);
     }
 
@@ -194,19 +204,28 @@ public:
         drawPanel (g, getLocalBounds(), tr ("Preset per i plug-in nativi", "Native plug-in presets"));
         g.setColour (C::dim);
         g.setFont (font (11.0f));
-        g.drawText (tr ("Trascina nella catena insert, sopra May Pro Mix:", "Drag into the insert chain, above May Pro Mix:"), chipsLabel, juce::Justification::centredRight, true);
+        g.drawText (tr ("Nella catena insert, sopra May Pro Mix:", "Into the insert chain, above May Pro Mix:"), chipsLabel, juce::Justification::centredRight, true);
     }
 
 private:
-    void timerCallback() override
+    juce::Array<Advice> pendingList (int kind) const { return pending ? pending (kind) : juce::Array<Advice>(); }
+
+    void updateChips()
     {
         const auto s = proc.currentSettings();
-        eqChip.setEnabled (s.hasEq());
-        compChip.setEnabled (s.compOn);
+        const int ne = pendingList (0).size(), nc = pendingList (1).size();
+        const auto se = withPending (s, pendingList (0)), sc = withPending (s, pendingList (1));
+        auto lab = [] (const juce::String& base, int n) { return n > 0 ? base + " (+" + juce::String (n) + ")" : base; };
+        const auto le = lab (tr ("Trascina Pro EQ3", "Drag Pro EQ3"), ne), lc = lab (tr ("Trascina Compressor", "Drag Compressor"), nc);
+        if (le != eqChip.label || lc != compChip.label) { eqChip.label = le; compChip.label = lc; eqChip.repaint(); compChip.repaint(); }
+        eqChip.setEnabled (se.hasEq());
+        compChip.setEnabled (sc.compOn);
     }
 
+    void timerCallback() override { updateChips(); }
+
     TrackProcessor& proc;
-    ModuleBox hpf, eq1, eq2, eq3, comp;
+    ModuleBox hpf, eq1, eq2, eq3, eq4, eq5, comp;
     DragPresetButton eqChip, compChip;
     juce::Rectangle<int> chipsLabel;
 };

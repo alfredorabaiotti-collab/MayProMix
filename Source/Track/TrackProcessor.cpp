@@ -31,16 +31,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout TrackProcessor::createLayout
     bl ("hpf_on", "HPF on", false);
     fl ("hpf_freq", "HPF freq", logRange (20.0f, 600.0f), 80.0f, hz, "Hz");
     l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { "hpf_slope", 1 }, "HPF slope", juce::StringArray { "12 dB/oct", "24 dB/oct" }, 0));
-    const float defF[3] { 250.0f, 1000.0f, 4000.0f };
-    for (int k = 0; k < 3; ++k)
+    // le 5 bande del Pro EQ3
+    const char* bandNames[] { "LF", "LMF", "MF", "HMF", "HF" };
+    const float defF[] { 100.0f, 400.0f, 1500.0f, 5000.0f, 10000.0f };
+    for (int k = 0; k < mpm::kEqBands; ++k)
     {
         const auto p = "eq" + juce::String (k + 1) + "_";
-        const auto nm = "EQ " + juce::String (k + 1) + " ";
+        const auto nm = "EQ " + juce::String (bandNames[k]) + " ";
         bl ((p + "on").toRawUTF8(), (nm + "on").toRawUTF8(), false);
-        l.add (std::make_unique<juce::AudioParameterChoice> (juce::ParameterID { p + "type", 1 }, nm + "type", juce::StringArray { "Bell", "Low shelf", "High shelf" }, 0));
         fl ((p + "freq").toRawUTF8(), (nm + "freq").toRawUTF8(), logRange (20.0f, 20000.0f), defF[k], hz, "Hz");
         fl ((p + "gain").toRawUTF8(), (nm + "gain").toRawUTF8(), juce::NormalisableRange<float> (-15.0f, 15.0f, 0.1f), 0.0f, dB, "dB");
-        fl ((p + "q").toRawUTF8(), (nm + "Q").toRawUTF8(), logRange (0.3f, 8.0f), 1.0f, [] (float v, int) { return mpm::num (v, 2); }, "");
+        fl ((p + "q").toRawUTF8(), (nm + "Q").toRawUTF8(), logRange (0.3f, 8.0f), (k == 0 || k == 4) ? 0.7f : 1.0f, [] (float v, int) { return mpm::num (v, 2); }, "");
     }
     bl ("comp_on", "Comp on", false);
     fl ("comp_thr", "Comp threshold", juce::NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, dB, "dB");
@@ -141,9 +142,11 @@ const juce::StringArray& TrackProcessor::fixParamIds()
 {
     // stesso ordine di mpm::FixStateIndex
     static const juce::StringArray ids { "fix_on", "hpf_on", "hpf_freq", "hpf_slope",
-        "eq1_on", "eq1_type", "eq1_freq", "eq1_gain", "eq1_q",
-        "eq2_on", "eq2_type", "eq2_freq", "eq2_gain", "eq2_q",
-        "eq3_on", "eq3_type", "eq3_freq", "eq3_gain", "eq3_q",
+        "eq1_on", "eq1_freq", "eq1_gain", "eq1_q",
+        "eq2_on", "eq2_freq", "eq2_gain", "eq2_q",
+        "eq3_on", "eq3_freq", "eq3_gain", "eq3_q",
+        "eq4_on", "eq4_freq", "eq4_gain", "eq4_q",
+        "eq5_on", "eq5_freq", "eq5_gain", "eq5_q",
         "comp_on", "comp_thr", "comp_ratio", "comp_att", "comp_rel", "comp_makeup",
         "deess_on", "deess_freq", "deess_thr", "deess_range" };
     jassert (ids.size() == fsCount);
@@ -156,11 +159,10 @@ FixSettings TrackProcessor::currentSettings() const noexcept
     FixSettings s;
     s.enabled = true;
     s.hpfOn = v (fsHpfOn) > 0.5f; s.hpfFreq = v (fsHpfFreq); s.hpfSlope = v (fsHpfSlope) > 0.5f ? 24 : 12;
-    for (int k = 0; k < 3; ++k)
+    for (int k = 0; k < kEqBands; ++k)
     {
-        const int b = fsEq0On + k * 5;
-        s.eqOn[k] = v (b) > 0.5f; s.eqType[k] = juce::jlimit (0, 2, juce::roundToInt (v (b + 1)));
-        s.eqFreq[k] = v (b + 2); s.eqGain[k] = v (b + 3); s.eqQ[k] = v (b + 4);
+        const int b = fsEq0On + k * 4;
+        s.eqOn[k] = v (b) > 0.5f; s.eqFreq[k] = v (b + 1); s.eqGain[k] = v (b + 2); s.eqQ[k] = v (b + 3);
     }
     s.compOn = v (fsCompOn) > 0.5f; s.compThr = v (fsCompThr); s.compRatio = v (fsCompRatio);
     s.compAtt = v (fsCompAtt); s.compRel = v (fsCompRel); s.compMakeup = v (fsCompMakeup);
@@ -178,12 +180,11 @@ void TrackProcessor::setParam (const juce::String& id, float value)
     }
 }
 
-void TrackProcessor::applyFix (const FixAction& f)
+void TrackProcessor::applyFixes (const juce::Array<FixAction>& fixes)
 {
     JUCE_ASSERT_MESSAGE_THREAD
-    if (! f.valid()) return;
     auto s = currentSettings();
-    applyFixTo (s, f);
+    for (const auto& f : fixes) if (f.valid()) applyFixTo (s, f);
     setSettings (s);
     requestReset();   // il preset e' stato inserito: nuova analisi per la verifica "Risolto / Ancora presente"
 }
@@ -193,11 +194,10 @@ void TrackProcessor::setSettings (const FixSettings& s)
     setParam ("hpf_on", s.hpfOn ? 1.0f : 0.0f);
     setParam ("hpf_freq", s.hpfFreq);
     setParam ("hpf_slope", s.hpfSlope >= 24 ? 1.0f : 0.0f);
-    for (int k = 0; k < 3; ++k)
+    for (int k = 0; k < kEqBands; ++k)
     {
         const auto p = "eq" + juce::String (k + 1) + "_";
         setParam (p + "on", s.eqOn[k] ? 1.0f : 0.0f);
-        setParam (p + "type", (float) s.eqType[k]);
         setParam (p + "freq", s.eqFreq[k]);
         setParam (p + "gain", s.eqGain[k]);
         setParam (p + "q", s.eqQ[k]);
@@ -272,7 +272,10 @@ void TrackProcessor::timerCallback()
     if (fseq != seenFixRequest)
     {
         seenFixRequest = fseq;
-        applyFix (FixAction::fromArray (s.fixRequest));
+        float v[fsCount];
+        std::memcpy (v, s.fixRequest, sizeof (v));
+        setSettings (settingsFromState (v));   // il Master manda tutti i valori del preset inserito
+        requestReset();
     }
 
     const bool bypassed = lastBypassMs.load() > lastProcessMs.load();

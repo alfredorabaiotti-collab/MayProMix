@@ -35,21 +35,15 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     advice.onApplyLevel = [this] (float target) { proc.setTrimTarget (target); };
     spectrum.onGoToAdvice = [this] (int band) { advice.focusBand (band); };
     addAndMakeVisible (fixPanel);
-    // pulsante "Trascina Pro EQ3 / Compressor" sulla scheda: il preset contiene i valori gia' preparati + questa correzione
+    // pulsante "Trascina Pro EQ3 / Compressor": un solo preset con i valori gia' preparati + tutte le correzioni suggerite
     advice.onMakePreset = [this] (const Advice& a)
     {
-        auto s = proc.currentSettings();
-        applyFixTo (s, a.fix);
-        return presets::writeForTrack (s, presetKind (a.fix), proc.getTrackName());
+        const int kind = presetKind (a.fix);
+        return presets::writeForTrack (withPending (proc.currentSettings(), bundleFor (kind, &a)), kind, proc.getTrackName());
     };
-    // trascinamento concluso: il plug-in e' nella catena -> valori memorizzati, Fatto, nuova analisi
-    advice.onPresetDragged = [this] (const Advice& a)
-    {
-        if (proc.getSlot() >= 0 && a.checkable())
-            SharedBus::get().setDone (proc.getSlot(), a.key, a.title, true);
-        proc.applyFix (a.fix);
-        tick = 0;
-    };
+    advice.onPresetDragged = [this] (const Advice& a) { commitBundle (presetKind (a.fix), &a); };
+    fixPanel.pending = [this] (int kind) { return pendingFor (advice.getItems(), kind); };
+    fixPanel.onCommitted = [this] (int kind) { commitBundle (kind, nullptr); };
     // solo cambio di stato: le schede vengono ricostruite dal timer (mai dentro il click)
     advice.onDoneChanged = [this] (const Advice& a, bool on)
     {
@@ -235,4 +229,26 @@ void TrackEditor::timerCallback()
     repaint (leftArea);
     repaint (topArea);
     repaint (adviceArea.withHeight (44));
+}
+
+juce::Array<Advice> TrackEditor::bundleFor (int kind, const Advice* extra) const
+{
+    auto list = pendingFor (advice.getItems(), kind);
+    if (extra != nullptr && ! hasKey (list, extra->key) && presetKind (extra->fix) == kind) list.add (*extra);
+    return list;
+}
+
+void TrackEditor::commitBundle (int kind, const Advice* extra)
+{
+    // preset trascinato nella catena: i valori restano nel pannello, le schede vengono segnate Fatto, l'analisi riparte
+    const auto list = bundleFor (kind, extra);
+    juce::Array<FixAction> fixes;
+    for (const auto& a : list)
+    {
+        fixes.add (a.fix);
+        if (proc.getSlot() >= 0 && a.checkable())
+            SharedBus::get().setDone (proc.getSlot(), a.key, a.title, true);
+    }
+    proc.applyFixes (fixes);
+    tick = 0;
 }

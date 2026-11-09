@@ -18,7 +18,7 @@
 namespace mpm
 {
 static constexpr juce::uint32 kMagic = 0x4d50524d; // "MPRM"
-static constexpr juce::uint32 kVersion = 5;
+static constexpr juce::uint32 kVersion = 6;
 
 SharedBus& SharedBus::get()
 {

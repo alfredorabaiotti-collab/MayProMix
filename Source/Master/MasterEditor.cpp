@@ -321,24 +321,32 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
         tick = 0;
         timerCallback();
     };
-    // anche dal Master si trascina il preset della traccia selezionata (valori letti dalla memoria condivisa)
-    advice.onMakePreset = [this] (const Advice& a)
+    // anche dal Master: un solo preset con tutte le correzioni suggerite per la traccia selezionata
+    auto bundle = [this] (const Advice& a)
+    {
+        const int kind = presetKind (a.fix);
+        auto list = pendingFor (advice.getItems(), kind);
+        if (! hasKey (list, a.key)) list.add (a);
+        return list;
+    };
+    advice.onMakePreset = [this, bundle] (const Advice& a)
     {
         const int slot = rows.selectedSlot;
         if (slot < 0 || slot >= kMaxSlots || ! a.fix.valid()) return juce::File();
         const auto& sd = SharedBus::get().bus().slots[slot];
-        auto s = settingsFromState (sd.fixState);
-        applyFixTo (s, a.fix);
+        const auto s = withPending (settingsFromState (sd.fixState), bundle (a));
         return presets::writeForTrack (s, presetKind (a.fix), juce::String::fromUTF8 (sd.name, (int) strnlen (sd.name, sizeof (sd.name))));
     };
-    advice.onPresetDragged = [this] (const Advice& a)
+    advice.onPresetDragged = [this, bundle] (const Advice& a)
     {
-        // la traccia memorizza i nuovi valori e rifa' l'analisi
+        // la traccia riceve tutti i valori del preset inserito e rifa' l'analisi
         const int slot = rows.selectedSlot;
         if (slot < 0 || slot >= kMaxSlots || ! a.fix.valid()) return;
-        if (a.checkable()) SharedBus::get().setDone (slot, a.key, a.title, true);
+        const auto list = bundle (a);
         auto& s = SharedBus::get().bus().slots[slot];
-        a.fix.toArray (s.fixRequest);
+        const auto settings = withPending (settingsFromState (s.fixState), list);
+        for (const auto& x : list) if (x.checkable()) SharedBus::get().setDone (slot, x.key, x.title, true);
+        toState (settings, s.fixRequest);
         std::atomic_thread_fence (std::memory_order_release);
         s.fixRequestSeq = s.fixRequestSeq + 1;
         tick = 0;
