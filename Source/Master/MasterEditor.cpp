@@ -386,7 +386,14 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
     setResizable (true, true);
     setResizeLimits (1260, 740, 1900, 1250);
     setSize (1280, 800);
-    if (! Tutorial::alreadySeen())
+    addChildComponent (welcome);
+    addAndMakeVisible (donateBtn);
+    donateBtn.onClick = [this] { welcome.open(); };
+    welcome.onLanguageChanged = [this] { donateBtn.repaint(); };
+    welcome.onClose = [this] { if (! Tutorial::alreadySeen()) tutorial.start(); };
+    welcome.setBounds (getLocalBounds());
+    welcome.showIfFirstTime();
+    if (! welcome.isVisible() && ! Tutorial::alreadySeen())
         tutorial.start();
     startTimerHz (15);
 }
@@ -490,6 +497,9 @@ void MasterEditor::resized()
     rows.setSize (rowsView.getWidth() - 8, rows.getHeight());
     advice.setBounds (adviceArea.reduced (12).withTrimmedTop (34));
     tutorial.setBounds (getLocalBounds());
+    welcome.setBounds (getLocalBounds());
+    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, getHeight() - may::DonateButton::kHeight - 6,
+                         may::DonateButton::kWidth, may::DonateButton::kHeight);
 }
 
 void MasterEditor::paint (juce::Graphics& g)

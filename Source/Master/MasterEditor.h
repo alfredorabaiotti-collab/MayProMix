@@ -2,6 +2,7 @@
 #include "MasterProcessor.h"
 #include "../Shared/Theme.h"
 #include "../Shared/Tutorial.h"
+#include "../Shared/Donate.h"
 
 // Elenco delle tracce collegate con meter, livello relativo, pienezza e stato
 class TrackRows : public juce::Component
@@ -119,6 +120,8 @@ private:
     juce::Viewport issuesView;
     mpm::ui::AdviceList advice;
     mpm::ui::Tutorial tutorial;
+    may::Welcome welcome { "MayProMix", "May Pro Mix", mpm::ui::welcomeEnglish(), mpm::ui::welcomeSetEnglish(), mpm::ui::welcomeStyle() };
+    may::DonateButton donateBtn { mpm::ui::welcomeEnglish(), mpm::ui::welcomeStyle() };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> genreAttach, targetAttach;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> refAttach;

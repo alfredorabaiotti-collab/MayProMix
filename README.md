@@ -52,6 +52,10 @@ cmake --build build --config Release
 
 Both plug-ins pass [pluginval](https://github.com/Tracktion/pluginval) at strictness level 10.
 
+## Sostieni il progetto · Support the project
+
+Il plug-in è gratuito. Alla prima apertura una finestra di benvenuto ringrazia per il download; il piccolo pulsante "Dona" in basso a destra la riapre. Se hai voglia di contribuire puoi fare un'offerta su PayPal a **alfredorabaiotti@gmail.com**.
+
 ## English
 
 May Pro Mix listens to every track of your song in Fender Studio Pro and tells you, track by track, what to fix and which plug-in to use. Insert **May Pro Mix Track** as the last insert on every track and **May Pro Mix Master** as the last plug-in on the Main channel, choose the genre, press Play and follow the advice. Switch the interface language with the IT / EN button. The full manual is in the `Docs` folder.

@@ -59,7 +59,14 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     setResizable (true, true);
     setResizeLimits (1060, 760, 1700, 1200);
     setSize (1120, 820);
-    if (! Tutorial::alreadySeen())
+    addChildComponent (welcome);
+    addAndMakeVisible (donateBtn);
+    donateBtn.onClick = [this] { welcome.open(); };
+    welcome.onLanguageChanged = [this] { donateBtn.repaint(); };
+    welcome.onClose = [this] { if (! Tutorial::alreadySeen()) tutorial.start(); };
+    welcome.setBounds (getLocalBounds());
+    welcome.showIfFirstTime();
+    if (! welcome.isVisible() && ! Tutorial::alreadySeen())
         tutorial.start();
     startTimerHz (15);
 }
@@ -125,6 +132,9 @@ void TrackEditor::resized()
     advice.setBounds (adviceArea.reduced (12).withTrimmedTop (34));
     fixPanel.setBounds (fixArea);
     tutorial.setBounds (getLocalBounds());
+    welcome.setBounds (getLocalBounds());
+    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, getHeight() - may::DonateButton::kHeight - 6,
+                         may::DonateButton::kWidth, may::DonateButton::kHeight);
 }
 
 void TrackEditor::paint (juce::Graphics& g)

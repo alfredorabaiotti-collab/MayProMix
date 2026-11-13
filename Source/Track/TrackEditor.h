@@ -2,6 +2,7 @@
 #include "TrackProcessor.h"
 #include "../Shared/Theme.h"
 #include "../Shared/Tutorial.h"
+#include "../Shared/Donate.h"
 #include "FixPanel.h"
 
 class TrackEditor : public juce::AudioProcessorEditor, private juce::Timer
@@ -36,6 +37,8 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> analyseAttach;
     mpm::ui::FixPanel fixPanel;
     mpm::ui::Tutorial tutorial;
+    may::Welcome welcome { "MayProMix", "May Pro Mix", mpm::ui::welcomeEnglish(), mpm::ui::welcomeSetEnglish(), mpm::ui::welcomeStyle() };
+    may::DonateButton donateBtn { mpm::ui::welcomeEnglish(), mpm::ui::welcomeStyle() };
     juce::TooltipWindow tooltips { this, 600 };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> trimAttach;
