@@ -9,6 +9,7 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     setLookAndFeel (&lnf);
     logo = juce::ImageCache::getFromMemory (BinaryData::logo_png, BinaryData::logo_pngSize);
     lastEnglish = SharedBus::get().english();
+    helpBtn.setTooltip (tr ("Guida rapida e segnalazione problemi (plugin@maystudio.it)", "Quick guide and problem reports (plugin@maystudio.it)"));
 
     Advisor::fillRoleCombo (roleBox);
     addAndMakeVisible (roleBox);
@@ -51,7 +52,12 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
         SharedBus::get().setDone (proc.getSlot(), a.key, a.title, on);
         tick = 0;
     };
-    helpBtn.onClick = [this] { tutorial.start(); };
+    helpBtn.onClick = [this]
+    {
+        may::showHelpMenu (helpBtn, SharedBus::get().english(), "May Pro Mix Track", JucePlugin_VersionString,
+                           juce::PluginHostType().getHostDescription(),
+                           [this] { tutorial.start(); }, [this] { welcome.open(); });
+    };
     addAndMakeVisible (helpBtn);
     addChildComponent (tutorial);
 
@@ -61,6 +67,7 @@ TrackEditor::TrackEditor (TrackProcessor& p) : AudioProcessorEditor (p), proc (p
     setSize (1120, 820);
     addChildComponent (welcome);
     addAndMakeVisible (donateBtn);
+    addAndMakeVisible (footer);
     donateBtn.onClick = [this] { welcome.open(); };
     welcome.onLanguageChanged = [this] { donateBtn.repaint(); };
     welcome.onClose = [this] { if (! Tutorial::alreadySeen()) tutorial.start(); };
@@ -98,6 +105,10 @@ void TrackEditor::refreshTexts()
 void TrackEditor::resized()
 {
     auto r = getLocalBounds().reduced (10);
+    // riga in basso: scritta May Recording Studio a sinistra, pulsante Dona a destra
+    const auto footerRow = r.removeFromBottom (18);
+    r.removeFromBottom (4);
+    footer.setBounds (footerRow.getX() + 4, footerRow.getCentreY() - may::FooterLabel::kHeight / 2, may::FooterLabel::kWidth, may::FooterLabel::kHeight);
     topArea = r.removeFromTop (58);
     r.removeFromTop (10);
     leftArea = r.removeFromLeft (260);
@@ -133,7 +144,7 @@ void TrackEditor::resized()
     fixPanel.setBounds (fixArea);
     tutorial.setBounds (getLocalBounds());
     welcome.setBounds (getLocalBounds());
-    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, getHeight() - may::DonateButton::kHeight - 6,
+    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, footerRow.getCentreY() - may::DonateButton::kHeight / 2,
                          may::DonateButton::kWidth, may::DonateButton::kHeight);
 }
 

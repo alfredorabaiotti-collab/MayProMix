@@ -210,6 +210,68 @@ private:
     bool copied = false;
 };
 
+//==============================================================================
+// Assistenza: indirizzo per segnalare i problemi e menu del pulsante "?"
+static constexpr const char* kSupportEmail = "plugin@maystudio.it";
+
+// Apre il programma di posta con una segnalazione gia' impostata (plug-in, versione, sistema, DAW)
+inline void reportProblem (const juce::String& product, const juce::String& version, const juce::String& host, bool english)
+{
+    const auto subject = juce::String (english ? "Problem report: " : "Segnalazione problema: ") + product + " " + version;
+    juce::String body;
+    body << (english ? "Describe the problem here (what you did, what happened, what you expected):" : "Descrivi qui il problema (cosa stavi facendo, cosa e' successo, cosa ti aspettavi):")
+         << "\n\n\n\n----\n"
+         << product << " " << version << "\n"
+         << juce::SystemStats::getOperatingSystemName() << "\n"
+         << host << "\n";
+    juce::URL ("mailto:" + juce::String (kSupportEmail)
+               + "?subject=" + juce::URL::addEscapeChars (subject, true)
+               + "&body=" + juce::URL::addEscapeChars (body, true)).launchInDefaultBrowser();
+}
+
+// Menu del pulsante "?": guida (se c'e'), segnala un problema, copia l'indirizzo, sostieni il progetto
+inline void showHelpMenu (juce::Component& target, bool english, const juce::String& product, const juce::String& version,
+                          const juce::String& host, std::function<void()> openGuide, std::function<void()> openDonate)
+{
+    auto t = [english] (const char* it, const char* en) { return juce::String::fromUTF8 (english ? en : it); };
+    juce::PopupMenu m;
+    m.addSectionHeader (product + "  " + version);
+    if (openGuide) m.addItem (1, t ("Guida rapida", "Quick guide"));
+    m.addItem (2, t ("Segnala un problema: ", "Report a problem: ") + kSupportEmail);
+    m.addItem (3, t ("Copia l'indirizzo ", "Copy the address ") + kSupportEmail);
+    if (openDonate) { m.addSeparator(); m.addItem (4, t ("Sostieni il progetto (Dona)", "Support the project (Donate)")); }
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target),
+                     [product, version, host, english, openGuide, openDonate] (int r)
+                     {
+                         if (r == 1 && openGuide) openGuide();
+                         if (r == 2) reportProblem (product, version, host, english);
+                         if (r == 3) juce::SystemClipboard::copyTextToClipboard (kSupportEmail);
+                         if (r == 4 && openDonate) openDonate();
+                     });
+}
+
+// Scritta piccola in basso a sinistra: "May Recording Studio  |  vincemay.it  |  v1.0.0"
+class FooterLabel : public juce::Component
+{
+public:
+    FooterLabel (juce::String version, juce::Colour colour = juce::Colour (0xff8e9bab))
+        : text ("May Recording Studio  |  vincemay.it  |  v" + version), col (colour)
+    {
+        setInterceptsMouseClicks (false, false);
+    }
+    static constexpr int kWidth = 260, kHeight = 16;
+    void paint (juce::Graphics& g) override
+    {
+        g.setColour (col.withAlpha (0.85f));
+        g.setFont (juce::Font (juce::FontOptions (11.0f)));
+        g.drawText (text, getLocalBounds(), juce::Justification::centredLeft, true);
+    }
+
+private:
+    juce::String text;
+    juce::Colour col;
+};
+
 // Piccolo pulsante "Dona" / "Donate" da mettere in basso a destra
 class DonateButton : public juce::Button
 {
@@ -236,6 +298,31 @@ public:
 
 private:
     std::function<bool()> english;
+    WelcomeStyle st;
+};
+
+// Piccolo pulsante "?" rotondo, per i plug-in che non hanno gia' un pulsante di aiuto
+class HelpButton : public juce::Button
+{
+public:
+    explicit HelpButton (WelcomeStyle s = {}) : juce::Button ("help"), st (s)
+    {
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        setTooltip (juce::String::fromUTF8 ("Segnala un problema / Report a problem: ") + kSupportEmail);
+    }
+    static constexpr int kSize = 20;
+    void paintButton (juce::Graphics& g, bool over, bool down) override
+    {
+        auto r = getLocalBounds().toFloat().reduced (0.5f);
+        g.setColour (st.accent.withAlpha (down ? 0.35f : (over ? 0.25f : 0.12f)));
+        g.fillEllipse (r);
+        g.setColour (st.accent.withAlpha (over ? 0.95f : 0.7f));
+        g.drawEllipse (r, 1.0f);
+        g.setFont (juce::Font (juce::FontOptions (12.0f, juce::Font::bold)));
+        g.drawText ("?", getLocalBounds(), juce::Justification::centred);
+    }
+
+private:
     WelcomeStyle st;
 };
 } // namespace may

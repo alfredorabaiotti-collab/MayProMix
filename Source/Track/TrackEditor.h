@@ -38,6 +38,7 @@ private:
     mpm::ui::FixPanel fixPanel;
     mpm::ui::Tutorial tutorial;
     may::Welcome welcome { "MayProMix", "May Pro Mix", mpm::ui::welcomeEnglish(), mpm::ui::welcomeSetEnglish(), mpm::ui::welcomeStyle() };
+    may::FooterLabel footer { JucePlugin_VersionString, mpm::ui::C::dim };
     may::DonateButton donateBtn { mpm::ui::welcomeEnglish(), mpm::ui::welcomeStyle() };
     juce::TooltipWindow tooltips { this, 600 };
 

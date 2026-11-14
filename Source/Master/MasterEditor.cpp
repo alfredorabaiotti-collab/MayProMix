@@ -275,6 +275,7 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
     setLookAndFeel (&lnf);
     logo = juce::ImageCache::getFromMemory (BinaryData::logo_png, BinaryData::logo_pngSize);
     lastEnglish = SharedBus::get().english();
+    helpBtn.setTooltip (tr ("Guida rapida e segnalazione problemi (plugin@maystudio.it)", "Quick guide and problem reports (plugin@maystudio.it)"));
 
     genreBox.addItemList (Advisor::genreChoices(), 1);
     targetBox.addItemList (Advisor::targetChoices(), 1);
@@ -297,7 +298,12 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
         toast = tr ("Analisi azzerata: fai suonare il brano", "Analysis reset: play the song");
         toastTicks = 45;
     };
-    helpBtn.onClick = [this] { tutorial.start(); };
+    helpBtn.onClick = [this]
+    {
+        may::showHelpMenu (helpBtn, SharedBus::get().english(), "May Pro Mix Master", JucePlugin_VersionString,
+                           juce::PluginHostType().getHostDescription(),
+                           [this] { tutorial.start(); }, [this] { welcome.open(); });
+    };
     lang.onChange = [this] { refreshTexts(); };
     for (auto* c : std::initializer_list<juce::Component*> { &refBtn, &storeBtn, &resetBtn, &helpBtn, &lang, &loudRing, &fullRing, &spectrum, &rowsView, &advice })
         addAndMakeVisible (c);
@@ -388,6 +394,7 @@ MasterEditor::MasterEditor (MasterProcessor& p) : AudioProcessorEditor (p), proc
     setSize (1280, 800);
     addChildComponent (welcome);
     addAndMakeVisible (donateBtn);
+    addAndMakeVisible (footer);
     donateBtn.onClick = [this] { welcome.open(); };
     welcome.onLanguageChanged = [this] { donateBtn.repaint(); };
     welcome.onClose = [this] { if (! Tutorial::alreadySeen()) tutorial.start(); };
@@ -454,6 +461,10 @@ void MasterEditor::refreshTexts()
 void MasterEditor::resized()
 {
     auto r = getLocalBounds().reduced (10);
+    // riga in basso: scritta May Recording Studio a sinistra, pulsante Dona a destra
+    const auto footerRow = r.removeFromBottom (18);
+    r.removeFromBottom (4);
+    footer.setBounds (footerRow.getX() + 4, footerRow.getCentreY() - may::FooterLabel::kHeight / 2, may::FooterLabel::kWidth, may::FooterLabel::kHeight);
     topArea = r.removeFromTop (58);
     r.removeFromTop (10);
     leftArea = r.removeFromLeft (270);
@@ -498,7 +509,7 @@ void MasterEditor::resized()
     advice.setBounds (adviceArea.reduced (12).withTrimmedTop (34));
     tutorial.setBounds (getLocalBounds());
     welcome.setBounds (getLocalBounds());
-    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, getHeight() - may::DonateButton::kHeight - 6,
+    donateBtn.setBounds (getWidth() - may::DonateButton::kWidth - 26, footerRow.getCentreY() - may::DonateButton::kHeight / 2,
                          may::DonateButton::kWidth, may::DonateButton::kHeight);
 }
 
